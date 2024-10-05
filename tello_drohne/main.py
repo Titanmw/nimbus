@@ -1,4 +1,4 @@
-from time import sleep
+import time
 from djitellopy import tello
 import cv2
 import mediapipe as mp
@@ -73,3 +73,4 @@ with mp_face_detection.FaceDetection(model_selection=0, min_detection_confidence
                 target = False
             else:
                 target = True
+        time.sleep(0.05)
