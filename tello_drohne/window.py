@@ -9,7 +9,10 @@ import mediapipe as mp
 import numpy as np
 
 connected = False
-ai = False
+face_detection = False
+face_center = False
+qr_detection = False
+qr_code_center = False
 
 def button_connect_drone():
     global connected
@@ -110,13 +113,13 @@ def adjust_drone_position(offset, qr_size):
     die Größe auf etwa 300 Pixel einzustellen.
     """
 
-    desired_qr_size = 300  # Zielgröße des QR-Codes in Pixeln
+    desired_qr_size = 250  # Zielgröße des QR-Codes in Pixeln
     size_error = qr_size - desired_qr_size
 
     # Steuerkommandos, um den QR-Code zur Mitte zu bewegen
     # Offset-Werte sind in Pixeln, wir müssen sie in Drohnenbewegungen übersetzen
-    offset_x_threshold = 20  # Schwellenwert für die X-Verschiebung in Pixeln
-    offset_y_threshold = 20  # Schwellenwert für die Y-Verschiebung in Pixeln
+    offset_x_threshold = 100  # Schwellenwert für die X-Verschiebung in Pixeln
+    offset_y_threshold = 100  # Schwellenwert für die Y-Verschiebung in Pixeln
 
     # Bewege Drohne basierend auf X-Offset
     if abs(offset[0]) > offset_x_threshold:
@@ -174,44 +177,42 @@ def update_drone_image():
         # image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         # image = cv2.putText(image, f'Battery: {me.battery_text}%', (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)
 
-        decoded_text, points, _ = qr_detector.detectAndDecode(image)
+        if qr_detection:
+            decoded_text, points, _ = qr_detector.detectAndDecode(image)
 
-        if points is not None:
-            points = points[0]
+            if points is not None:
+                points = points[0]
 
-            if decoded_text:
-                for i in range(len(points)):
-                    pt1 = tuple(map(int, points[i]))
-                    pt2 = tuple(map(int, points[(i + 1) % len(points)]))
-                    cv2.line(image, pt1, pt2, color=(0, 255, 0), thickness=2)
+                if decoded_text:
+                    for i in range(len(points)):
+                        pt1 = tuple(map(int, points[i]))
+                        pt2 = tuple(map(int, points[(i + 1) % len(points)]))
+                        cv2.line(image, pt1, pt2, color=(0, 255, 0), thickness=2)
 
+                    text_qr_code.config(state="normal")
+                    text_qr_code.delete("1.0", tkinter.END)
+                    text_qr_code.insert(tkinter.END, decoded_text)
+                    text_qr_code.config(state="disabled")
+                    text_qr_code.update()
+
+                    offset, size = calculate_qr_code_offset_and_size(image, points)
+
+                    text_offset = f"Offset (x, y): ({offset[0]:.2f}, {offset[1]:.2f})"
+                    text_size = f"Size: {size:.2f} px"
+
+                    cv2.putText(image, text_offset, (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2, cv2.LINE_AA)
+                    cv2.putText(image, text_size, (10, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2, cv2.LINE_AA)
+
+                    if qr_code_center and me.is_flying:
+                        adjust_drone_position(offset, size)
+            else:
                 text_qr_code.config(state="normal")
                 text_qr_code.delete("1.0", tkinter.END)
-                text_qr_code.insert(tkinter.END, decoded_text)
                 text_qr_code.config(state="disabled")
                 text_qr_code.update()
 
-                offset, size = calculate_qr_code_offset_and_size(image, points)
-
-                text_offset = f"Offset (x, y): ({offset[0]:.2f}, {offset[1]:.2f})"
-                text_size = f"Size: {size:.2f} px"
-
-                cv2.putText(image, text_offset, (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2, cv2.LINE_AA)
-                cv2.putText(image, text_size, (10, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2, cv2.LINE_AA)
-
-                print(f"Abweichung des QR-Codes: {offset}")
-                print(f"Größe des QR-Codes: {size}")
-
-                if me.is_flying:
-                    adjust_drone_position(offset, size)
-        else:
-            text_qr_code.config(state="normal")
-            text_qr_code.delete("1.0", tkinter.END)
-            text_qr_code.config(state="disabled")
-            text_qr_code.update()
-
-        if ai:
-            results = face_detection.process(image)
+        if face_detection:
+            results = mp_face_detection.process(image)
             if results.detections:
                 for detection in results.detections:
                     mp_drawing.draw_detection(image, detection)
@@ -246,18 +247,57 @@ def button_land_drone():
 
     threading.Thread(target=me.land, daemon=True).start()
 
-def button_ai_toggle():
-    global ai, drone_ai
+def button_face_detection_toggle():
+    global face_detection
 
-    if ai:
-        ai = False
-        drone_ai.configure(text='OFF')
-        drone_ai.update()
+    if face_detection:
+        face_detection = False
+        drone_face_detect.configure(text='OFF')
+        drone_face_detect.update()
     else:
-        ai = True
-        drone_ai.configure(text='ON')
-        drone_ai.update()
+        face_detection = True
+        drone_face_detect.configure(text='ON')
+        drone_face_detect.update()
 
+def button_face_center_toggle():
+    global face_center
+
+    if face_center:
+        face_center = False
+        drone_face_center.configure(text='OFF')
+        drone_face_center.update()
+    else:
+        face_center = True
+        drone_face_center.configure(text='ON')
+        drone_face_center.update()
+
+def button_qr_detect_toggle():
+    global qr_detection
+
+    if qr_detection:
+        qr_detection = False
+        drone_qr_detect.configure(text='OFF')
+        drone_qr_detect.update()
+        text_qr_code.config(state="normal")
+        text_qr_code.delete("1.0", tkinter.END)
+        text_qr_code.config(state="disabled")
+        text_qr_code.update()
+    else:
+        qr_detection = True
+        drone_qr_detect.configure(text='ON')
+        drone_qr_detect.update()
+
+def button_qr_center_toggle():
+    global qr_code_center
+
+    if qr_code_center:
+        qr_code_center = False
+        drone_qr_center.configure(text='OFF')
+        drone_qr_center.update()
+    else:
+        qr_code_center = True
+        drone_qr_center.configure(text='ON')
+        drone_qr_center.update()
 
 me = tello.Tello()
 
@@ -268,7 +308,7 @@ frame.pack()
 
 mp_face_detection = mp.solutions.face_detection
 mp_drawing = mp.solutions.drawing_utils
-face_detection = mp_face_detection.FaceDetection(model_selection=0, min_detection_confidence=0.5)
+mp_face_detection = mp_face_detection.FaceDetection(model_selection=0, min_detection_confidence=0.5)
 
 # Drone Frame
 drone_frame = tkinter.LabelFrame(frame, text="Drone")
@@ -279,6 +319,9 @@ drone_status_label.grid(row=0, column=0)
 
 drone_status = tkinter.Label(drone_frame, text="offline")
 drone_status.grid(row=0, column=1, padx=10, pady=10)
+
+drone_connect_button = tkinter.Button(drone_frame, text="Connect", command=button_connect_drone)
+drone_connect_button.grid(row=0, column=2, padx=10, pady=10)
 
 drone_battery_label = tkinter.Label(drone_frame, text="Battery")
 drone_battery_label.grid(row=1, column=0)
@@ -292,23 +335,47 @@ drone_height_label.grid(row=2, column=0)
 drone_height = tkinter.Label(drone_frame, text="-")
 drone_height.grid(row=2, column=1, padx=10, pady=10)
 
-drone_ai_label = tkinter.Label(drone_frame, text="AI")
-drone_ai_label.grid(row=3, column=0)
+drone_face_detect_label = tkinter.Label(drone_frame, text="Face Detection")
+drone_face_detect_label.grid(row=3, column=0)
 
-drone_ai = tkinter.Label(drone_frame, text="OFF")
-drone_ai.grid(row=3, column=1, padx=10, pady=10)
+drone_face_detect = tkinter.Label(drone_frame, text="OFF")
+drone_face_detect.grid(row=3, column=1, padx=10, pady=10)
 
-drone_connect_button = tkinter.Button(drone_frame, text="Connect", command=button_connect_drone)
-drone_connect_button.grid(row=4, column=0, padx=10, pady=10)
+drone_face_detect_button = tkinter.Button(drone_frame, text="Toggle", command=button_face_detection_toggle)
+drone_face_detect_button.grid(row=3, column=2, padx=10, pady=10)
 
-drone_ai_button = tkinter.Button(drone_frame, text="Turn AI ON", command=button_ai_toggle)
-drone_ai_button.grid(row=4, column=1, padx=10, pady=10)
+drone_face_center_label = tkinter.Label(drone_frame, text="Center Face")
+drone_face_center_label.grid(row=4, column=0)
+
+drone_face_center = tkinter.Label(drone_frame, text="OFF")
+drone_face_center.grid(row=4, column=1, padx=10, pady=10)
+
+drone_face_button = tkinter.Button(drone_frame, text="Toggle", command=button_face_center_toggle)
+drone_face_button.grid(row=4, column=2, padx=10, pady=10)
+
+drone_qr_detect_label = tkinter.Label(drone_frame, text="QR-Code Detection")
+drone_qr_detect_label.grid(row=5, column=0)
+
+drone_qr_detect = tkinter.Label(drone_frame, text="OFF")
+drone_qr_detect.grid(row=5, column=1, padx=10, pady=10)
+
+drone_qr_detect_button = tkinter.Button(drone_frame, text="Toggle", command=button_qr_detect_toggle)
+drone_qr_detect_button.grid(row=5, column=2, padx=10, pady=10)
+
+drone_qr_center_label = tkinter.Label(drone_frame, text="Center QR-Code")
+drone_qr_center_label.grid(row=6, column=0)
+
+drone_qr_center = tkinter.Label(drone_frame, text="OFF")
+drone_qr_center.grid(row=6, column=1, padx=10, pady=10)
+
+drone_qr_button = tkinter.Button(drone_frame, text="Toggle", command=button_qr_center_toggle)
+drone_qr_button.grid(row=6, column=2, padx=10, pady=10)
 
 drone_takeoff_button = tkinter.Button(drone_frame, text="Take off", command=button_takeoff_drone)
-drone_takeoff_button.grid(row=5, column=0, padx=10, pady=10)
+drone_takeoff_button.grid(row=7, column=0, padx=10, pady=10)
 
 drone_land_button = tkinter.Button(drone_frame, text="Land", command=button_land_drone)
-drone_land_button.grid(row=5, column=1, padx=10, pady=10)
+drone_land_button.grid(row=7, column=1, padx=10, pady=10)
 
 # Bild Frame
 image_frame = tkinter.LabelFrame(frame, text="Image")
