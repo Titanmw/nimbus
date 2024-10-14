@@ -1,4 +1,3 @@
-# default_image.png from "https://www.flaticon.com/free-icons/no"
 import tkinter
 from tkinter import ttk, messagebox
 from PIL import ImageTk, Image
@@ -77,77 +76,67 @@ def disconnect_to_drone():
         drone_status.configure(text='offline')
         drone_status.update()
 
-def calculate_qr_code_offset_and_size(image, points):
+def calculate_offset_and_size(points, image):
     if points is None or len(points) < 4:
-        return None, None  # Keine gültigen QR-Code-Punkte
+        return None, None
 
-    qr_center_x = np.mean([point[0] for point in points])
-    qr_center_y = np.mean([point[1] for point in points])
+    center_x = np.mean([point[0] for point in points])
+    center_y = np.mean([point[1] for point in points])
 
     image_center_x = image.shape[1] / 2
     image_center_y = image.shape[0] / 2
 
-    offset_x = qr_center_x - image_center_x
-    offset_y = qr_center_y - image_center_y
+    offset_x = center_x - image_center_x
+    offset_y = center_y - image_center_y
 
-    qr_size = 0
+    size = 0
     num_points = len(points)
 
     for i in range(num_points):
         pt1 = points[i]
         pt2 = points[(i + 1) % num_points]
         distance = np.sqrt((pt2[0] - pt1[0]) ** 2 + (pt2[1] - pt1[1]) ** 2)
-        qr_size += distance
+        size += distance
 
-    qr_size /= num_points  # Durchschnittliche Kantenlänge des QR-Codes
+    size /= num_points
 
-    return (offset_x, offset_y), qr_size
+    return (offset_x, offset_y), size
 
-def adjust_drone_position(offset, qr_size):
+def adjust_drone_position(offset, size, desired_size):
     global me
 
     if not me.is_flying:
         return
-    """
-    Funktion zur Anpassung der Drohnenposition, um den QR-Code in die Mitte zu bewegen und
-    die Größe auf etwa 300 Pixel einzustellen.
-    """
 
-    desired_qr_size = 250  # Zielgröße des QR-Codes in Pixeln
-    size_error = qr_size - desired_qr_size
+    size_error = size - desired_size
 
-    # Steuerkommandos, um den QR-Code zur Mitte zu bewegen
-    # Offset-Werte sind in Pixeln, wir müssen sie in Drohnenbewegungen übersetzen
-    offset_x_threshold = 100  # Schwellenwert für die X-Verschiebung in Pixeln
-    offset_y_threshold = 100  # Schwellenwert für die Y-Verschiebung in Pixeln
+    offset_x_threshold = 100
+    offset_y_threshold = 100
 
-    # Bewege Drohne basierend auf X-Offset
     if abs(offset[0]) > offset_x_threshold:
         if offset[0] > 0:
             print("Drohne nach rechts bewegen")
-            me.send_rc_control(offset_x_threshold, 0, 0, 0)  # Bewege nach rechts
+            me.send_rc_control(offset_x_threshold, 0, 0, 0)
         else:
             print("Drohne nach links bewegen")
-            me.send_rc_control(-offset_x_threshold, 0, 0, 0)  # Bewege nach links
+            me.send_rc_control(-offset_x_threshold, 0, 0, 0)
 
-    # Bewege Drohne basierend auf Y-Offset
     if abs(offset[1]) > offset_y_threshold:
         if offset[1] > 0:
             print("Drohne nach unten bewegen")
-            me.send_rc_control(0, 0, -offset_y_threshold, 0)  # Bewege nach unten
+            me.send_rc_control(0, 0, -offset_y_threshold, 0)
         else:
             print("Drohne nach oben bewegen")
-            me.send_rc_control(0, 0, offset_y_threshold, 0)  # Bewege nach oben
+            me.send_rc_control(0, 0, offset_y_threshold, 0)
 
-    # Größe anpassen (Vorwärts/Zurück basierend auf der QR-Code-Größe)
-    size_threshold = 30  # Toleranz für die Größenabweichung in Pixeln
+    size_threshold = 30
     if abs(size_error) > size_threshold:
         if size_error > 0:
             print("Drohne rückwärts bewegen")
-            me.send_rc_control(0, -20, 0, 0)  # Rückwärts bewegen
+            me.send_rc_control(0, -20, 0, 0)
         else:
             print("Drohne vorwärts bewegen")
-            me.send_rc_control(0, 20, 0, 0)  # Vorwärts bewegen
+            me.send_rc_control(0, 20, 0, 0)
 
 def update_drone_image():
     global connected
@@ -172,10 +161,6 @@ def update_drone_image():
             continue
 
         image.flags.writeable = True
-        # image = cv2.flip(image, 1)
-
-        # image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        # image = cv2.putText(image, f'Battery: {me.battery_text}%', (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)
 
         if qr_detection:
             decoded_text, points, _ = qr_detector.detectAndDecode(image)
@@ -195,7 +180,7 @@ def update_drone_image():
                     text_qr_code.config(state="disabled")
                     text_qr_code.update()
 
-                    offset, size = calculate_qr_code_offset_and_size(image, points)
+                    offset, size = calculate_offset_and_size(points, image)
 
                     text_offset = f"Offset (x, y): ({offset[0]:.2f}, {offset[1]:.2f})"
                     text_size = f"Size: {size:.2f} px"
@@ -204,27 +189,38 @@ def update_drone_image():
                     cv2.putText(image, text_size, (10, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2, cv2.LINE_AA)
 
                     if qr_code_center and me.is_flying:
-                        adjust_drone_position(offset, size)
-            else:
-                text_qr_code.config(state="normal")
-                text_qr_code.delete("1.0", tkinter.END)
-                text_qr_code.config(state="disabled")
-                text_qr_code.update()
+                        adjust_drone_position(offset, size, 250)
 
         if face_detection:
             results = mp_face_detection.process(image)
             if results.detections:
                 for detection in results.detections:
                     mp_drawing.draw_detection(image, detection)
+                    face_box = detection.location_data.relative_bounding_box
+                    image_height, image_width, _ = image.shape
+                    points = [
+                        (int(face_box.xmin * image_width), int(face_box.ymin * image_height)),
+                        (int((face_box.xmin + face_box.width) * image_width), int(face_box.ymin * image_height)),
+                        (int((face_box.xmin + face_box.width) * image_width), int((face_box.ymin + face_box.height) * image_height)),
+                        (int(face_box.xmin * image_width), int((face_box.ymin + face_box.height) * image_height)),
+                    ]
+
+                    offset, size = calculate_offset_and_size(points, image)
+
+                    text_offset = f"Offset (x, y): ({offset[0]:.2f}, {offset[1]:.2f})"
+                    text_size = f"Size: {size:.2f} px"
+
+                    cv2.putText(image, text_offset, (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2, cv2.LINE_AA)
+                    cv2.putText(image, text_size, (10, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2, cv2.LINE_AA)
+
+                    if face_center and me.is_flying:
+                        adjust_drone_position(offset, size, 300)
 
         im_pil = Image.fromarray(image)
         imgtk = ImageTk.PhotoImage(image=im_pil)
 
-        # Bild im UI setzen
         image_capture.config(image=imgtk)
         image_capture.image = imgtk
-
-        # Kurz warten, um das UI nicht zu blockieren
         image_capture.update()
         window.after(20)
 
@@ -239,17 +235,14 @@ def show_default_image():
 
 def button_takeoff_drone():
     global me
-
     threading.Thread(target=me.takeoff, daemon=True).start()
 
 def button_land_drone():
     global me
-
     threading.Thread(target=me.land, daemon=True).start()
 
 def button_face_detection_toggle():
     global face_detection
-
     if face_detection:
         face_detection = False
         drone_face_detect.configure(text='OFF')
@@ -261,7 +254,6 @@ def button_face_detection_toggle():
 
 def button_face_center_toggle():
     global face_center
-
     if face_center:
         face_center = False
         drone_face_center.configure(text='OFF')
@@ -273,7 +265,6 @@ def button_face_center_toggle():
 
 def button_qr_detect_toggle():
     global qr_detection
-
     if qr_detection:
         qr_detection = False
         drone_qr_detect.configure(text='OFF')
@@ -289,7 +280,6 @@ def button_qr_detect_toggle():
 
 def button_qr_center_toggle():
     global qr_code_center
-
     if qr_code_center:
         qr_code_center = False
         drone_qr_center.configure(text='OFF')
