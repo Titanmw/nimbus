@@ -371,11 +371,62 @@ drone_qr_center.grid(row=6, column=1, padx=10, pady=10)
 drone_qr_button = tkinter.Button(drone_frame, text="Toggle", command=button_qr_center_toggle)
 drone_qr_button.grid(row=6, column=2, padx=10, pady=10)
 
-drone_takeoff_button = tkinter.Button(drone_frame, text="Take off", command=button_takeoff_drone)
+# Control Frame
+
+button_width = 8
+button_height = 4
+
+control_frame = tkinter.LabelFrame(drone_frame, text="Controls")
+control_frame.grid(row=8, column=0, padx=20, pady=20)
+
+control_forward = tkinter.Button(control_frame, text="Forward", width=button_width, height=button_height, command=lambda: threading.Thread(target=me.move_forward, daemon=True, args=[10]).start())
+control_forward.grid(row=1, column=1, padx=10, pady=10)
+
+control_left = tkinter.Button(control_frame, text="Left", width=button_width, height=button_height, command=lambda: threading.Thread(target=me.move_left, daemon=True, args=[10]).start())
+control_left.grid(row=2, column=0, padx=10, pady=10)
+
+control_right = tkinter.Button(control_frame, text="Right", width=button_width, height=button_height, command=lambda: threading.Thread(target=me.move_right, daemon=True, args=[10]).start())
+control_right.grid(row=2, column=2, padx=10, pady=10)
+
+control_back = tkinter.Button(control_frame, text="Back", width=button_width, height=button_height, command=lambda: threading.Thread(target=me.move_back, daemon=True, args=[10]).start())
+control_back.grid(row=3, column=1, padx=10, pady=10)
+
+control_up = tkinter.Button(control_frame, text="Up", width=button_width, height=button_height, command=lambda: threading.Thread(target=me.move_up, daemon=True, args=[10]).start())
+control_up.grid(row=1, column=3, padx=10, pady=10)
+
+control_down = tkinter.Button(control_frame, text="Down", width=button_width, height=button_height, command=lambda: threading.Thread(target=me.move_down, daemon=True, args=[10]).start())
+control_down.grid(row=3, column=3, padx=10, pady=10)
+
+# Takeoff and Land buttons above the controls
+drone_takeoff_button = tkinter.Button(drone_frame, text="Take off", width=button_width, height=button_height, command=button_takeoff_drone)
 drone_takeoff_button.grid(row=7, column=0, padx=10, pady=10)
 
-drone_land_button = tkinter.Button(drone_frame, text="Land", command=button_land_drone)
+drone_land_button = tkinter.Button(drone_frame, text="Land", width=button_width, height=button_height, command=button_land_drone)
 drone_land_button.grid(row=7, column=1, padx=10, pady=10)
+
+# Flip Frame placed next to the control buttons (to the right)
+flip_frame = tkinter.LabelFrame(drone_frame, text="Flip")
+flip_frame.grid(row=8, column=1, padx=20, pady=20)
+
+flip_forward = tkinter.Button(flip_frame, text="Forward", width=button_width, height=button_height, command=lambda: threading.Thread(target=me.flip_forward, daemon=True).start())
+flip_forward.grid(row=1, column=1, padx=10, pady=10)
+
+flip_left = tkinter.Button(flip_frame, text="Left", width=button_width, height=button_height, command=lambda: threading.Thread(target=me.flip_left, daemon=True).start())
+flip_left.grid(row=2, column=0, padx=10, pady=10)
+
+flip_right = tkinter.Button(flip_frame, text="Right", width=button_width, height=button_height, command=lambda: threading.Thread(target=me.flip_right, daemon=True).start())
+flip_right.grid(row=2, column=2, padx=10, pady=10)
+
+flip_backward = tkinter.Button(flip_frame, text="Backward", width=button_width, height=button_height, command=lambda: threading.Thread(target=me.flip_back, daemon=True).start())
+flip_backward.grid(row=3, column=1, padx=10, pady=10)
+
+# QR Frame
+qr_code_frame = tkinter.LabelFrame(drone_frame, text="QR Code")
+qr_code_frame.grid(row=9, column=0, columnspan=2, sticky="news", padx=20, pady=20)
+
+text_qr_code = tkinter.Text(qr_code_frame, height=5, width=30)
+text_qr_code.grid(row=0, column=0, sticky="ew", padx=10, pady=10)
+text_qr_code.config(state="disabled")
 
 # Bild Frame
 image_frame = tkinter.LabelFrame(frame, text="Image")
@@ -384,14 +435,8 @@ image_frame.grid(row=0, column=1, sticky="news", padx=20, pady=20)
 image_capture = tkinter.Label(image_frame, text="Capture")
 image_capture.grid(row=0, column=0, padx=10, pady=10, sticky="ew")
 
-show_default_image()
-
-qr_code_frame = tkinter.LabelFrame(frame, text="QR Code")
-qr_code_frame.grid(row=1, column=0, sticky="news", padx=20, pady=20)
-
-text_qr_code = tkinter.Text(qr_code_frame, height=5, width=30)
-text_qr_code.grid(row=0, column=0, sticky="ew", padx=10, pady=10)
-text_qr_code.config(state="disabled")
 
 # Main GUI Loop
+show_default_image()
+
 window.mainloop()
