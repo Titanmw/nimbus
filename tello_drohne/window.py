@@ -7,11 +7,17 @@ from djitellopy import tello
 import mediapipe as mp
 import numpy as np
 
+button_width = 8
+button_height = 4
+
 connected = False
 face_detection = False
 face_center = False
 qr_detection = False
 qr_code_center = False
+
+last_command_id = None
+qr_controlled = False
 
 def button_connect_drone():
     global connected
@@ -138,6 +144,56 @@ def adjust_drone_position(offset, size, desired_size):
             print("Drohne vorwärts bewegen")
             me.send_rc_control(0, 20, 0, 0)
 
+def process_qr_command(decoded_text):
+    global me, last_command_id
+
+    # QR-Code wird in drei Teile gesplittet: COMMAND:<ACTION>:<ID>
+    parts = decoded_text.split(":")
+
+    # Prüfen, ob der QR-Code das richtige Format für einen Command hat
+    if len(parts) == 3 and parts[0].upper() == "COMMAND":
+        action = f"{parts[0].upper()}:{parts[1].upper()}"
+        command_id = parts[2]
+
+        # Überprüfen, ob der Befehl bereits ausgeführt wurde
+        if command_id == last_command_id:
+            print(f"Befehl {command_id} wurde bereits ausgeführt, wird ignoriert.")
+            return
+        else:
+            print(f"Verarbeite neuen Befehl: {command_id}")
+            last_command_id = command_id  # Speichern der aktuellen Command-ID
+
+        # Drohnenbefehle basierend auf dem Command
+        if action == "COMMAND:LAND":
+            print("Befehl: Landen")
+            threading.Thread(target=me.land, daemon=True).start()
+        elif action == "COMMAND:FORWARD":
+            print("Befehl: Vorwärts")
+            threading.Thread(target=me.move_forward, daemon=True, args=[20]).start()
+        elif action == "COMMAND:LEFT":
+            print("Befehl: Links")
+            threading.Thread(target=me.move_left, daemon=True, args=[20]).start()
+        elif action == "COMMAND:RIGHT":
+            print("Befehl: Rechts")
+            threading.Thread(target=me.move_right, daemon=True, args=[20]).start()
+        elif action == "COMMAND:BACKWARD":
+            print("Befehl: Rückwärts")
+            threading.Thread(target=me.move_back, daemon=True, args=[20]).start()
+        elif action == "COMMAND:UP":
+            print("Befehl: Hoch")
+            threading.Thread(target=me.move_up, daemon=True, args=[20]).start()
+        elif action == "COMMAND:DOWN":
+            print("Befehl: Runter")
+            threading.Thread(target=me.move_down, daemon=True, args=[20]).start()
+        elif action == "COMMAND:ROTATE LEFT":
+            print("Befehl: Links Drehen")
+            threading.Thread(target=me.rotate_counter_clockwise, daemon=True, args=[30]).start()
+        elif action == "COMMAND:ROTATE RIGHT":
+            print("Befehl: Rechts Drehen")
+            threading.Thread(target=me.rotate_clockwise, daemon=True, args=[30]).start()
+        else:
+            print(f"Unbekannter Befehl: {action}")
+
 def update_drone_image():
     global connected
     qr_detector = cv2.QRCodeDetector()
@@ -179,6 +235,10 @@ def update_drone_image():
                     text_qr_code.insert(tkinter.END, decoded_text)
                     text_qr_code.config(state="disabled")
                     text_qr_code.update()
+
+                    # Process QR command if the format is COMMAND:<ACTION>
+                    if qr_controlled and decoded_text.startswith("COMMAND:"):
+                        process_qr_command(decoded_text)
 
                     offset, size = calculate_offset_and_size(points, image)
 
@@ -233,42 +293,33 @@ def show_default_image():
     drone_battery.configure(text='-')
     drone_status.update()
 
-def button_takeoff_drone():
-    global me
-    threading.Thread(target=me.takeoff, daemon=True).start()
-
-def button_land_drone():
-    global me
-    threading.Thread(target=me.land, daemon=True).start()
-
 def button_face_detection_toggle():
     global face_detection
     if face_detection:
         face_detection = False
         drone_face_detect.configure(text='OFF')
-        drone_face_detect.update()
     else:
         face_detection = True
         drone_face_detect.configure(text='ON')
-        drone_face_detect.update()
+
+    drone_face_detect.update()
 
 def button_face_center_toggle():
     global face_center
     if face_center:
         face_center = False
         drone_face_center.configure(text='OFF')
-        drone_face_center.update()
     else:
         face_center = True
         drone_face_center.configure(text='ON')
-        drone_face_center.update()
+
+    drone_face_center.update()
 
 def button_qr_detect_toggle():
     global qr_detection
     if qr_detection:
         qr_detection = False
         drone_qr_detect.configure(text='OFF')
-        drone_qr_detect.update()
         text_qr_code.config(state="normal")
         text_qr_code.delete("1.0", tkinter.END)
         text_qr_code.config(state="disabled")
@@ -276,18 +327,31 @@ def button_qr_detect_toggle():
     else:
         qr_detection = True
         drone_qr_detect.configure(text='ON')
-        drone_qr_detect.update()
+
+    drone_qr_detect.update()
 
 def button_qr_center_toggle():
     global qr_code_center
     if qr_code_center:
         qr_code_center = False
         drone_qr_center.configure(text='OFF')
-        drone_qr_center.update()
     else:
         qr_code_center = True
         drone_qr_center.configure(text='ON')
-        drone_qr_center.update()
+
+    drone_qr_center.update()
+
+def button_qr_controlled_toggle():
+    global qr_controlled
+
+    if qr_controlled:
+        qr_controlled = False
+        drone_qr_controlled.configure(text='OFF')
+    else:
+        qr_controlled = True
+        drone_qr_controlled.configure(text='ON')
+
+    drone_qr_controlled.update()
 
 me = tello.Tello()
 
@@ -299,6 +363,7 @@ frame.pack()
 mp_face_detection = mp.solutions.face_detection
 mp_drawing = mp.solutions.drawing_utils
 mp_face_detection = mp_face_detection.FaceDetection(model_selection=0, min_detection_confidence=0.5)
+
 
 # Drone Frame
 drone_frame = tkinter.LabelFrame(frame, text="Drone")
@@ -358,16 +423,28 @@ drone_qr_center_label.grid(row=6, column=0)
 drone_qr_center = tkinter.Label(drone_frame, text="OFF")
 drone_qr_center.grid(row=6, column=1, padx=10, pady=10)
 
-drone_qr_button = tkinter.Button(drone_frame, text="Toggle", command=button_qr_center_toggle)
-drone_qr_button.grid(row=6, column=2, padx=10, pady=10)
+drone_qr_center_button = tkinter.Button(drone_frame, text="Toggle", command=button_qr_center_toggle)
+drone_qr_center_button.grid(row=6, column=2, padx=10, pady=10)
+
+drone_qr_controlled_label = tkinter.Label(drone_frame, text="QR-Code conrolled")
+drone_qr_controlled_label.grid(row=7, column=0)
+
+drone_qr_controlled = tkinter.Label(drone_frame, text="OFF")
+drone_qr_controlled.grid(row=7, column=1, padx=10, pady=10)
+
+drone_qr_controlled_button = tkinter.Button(drone_frame, text="Toggle", command=button_qr_controlled_toggle)
+drone_qr_controlled_button.grid(row=7, column=2, padx=10, pady=10)
+
+drone_takeoff_button = tkinter.Button(drone_frame, text="Take off", width=button_width, height=button_height, command=lambda: threading.Thread(target=me.takeoff, daemon=True).start())
+drone_takeoff_button.grid(row=8, column=0, padx=10, pady=10)
+
+drone_land_button = tkinter.Button(drone_frame, text="Land", width=button_width, height=button_height, command=lambda: threading.Thread(target=me.land, daemon=True).start())
+drone_land_button.grid(row=8, column=1, padx=10, pady=10)
+
 
 # Control Frame
-
-button_width = 8
-button_height = 4
-
 control_frame = tkinter.LabelFrame(drone_frame, text="Controls")
-control_frame.grid(row=8, column=0, padx=20, pady=20)
+control_frame.grid(row=9, column=0, padx=20, pady=20)
 
 control_forward = tkinter.Button(control_frame, text="Forward", width=button_width, height=button_height, command=lambda: threading.Thread(target=me.move_forward, daemon=True, args=[10]).start())
 control_forward.grid(row=1, column=1, padx=10, pady=10)
@@ -387,16 +464,16 @@ control_up.grid(row=1, column=3, padx=10, pady=10)
 control_down = tkinter.Button(control_frame, text="Down", width=button_width, height=button_height, command=lambda: threading.Thread(target=me.move_down, daemon=True, args=[10]).start())
 control_down.grid(row=3, column=3, padx=10, pady=10)
 
-# Takeoff and Land buttons above the controls
-drone_takeoff_button = tkinter.Button(drone_frame, text="Take off", width=button_width, height=button_height, command=button_takeoff_drone)
-drone_takeoff_button.grid(row=7, column=0, padx=10, pady=10)
+control_rotate_left = tkinter.Button(control_frame, text="Rotate Left", width=button_width, height=button_height, command=lambda: threading.Thread(target=me.rotate_counter_clockwise, daemon=True, args=[30]).start())
+control_rotate_left.grid(row=1, column=0, padx=10, pady=10)
 
-drone_land_button = tkinter.Button(drone_frame, text="Land", width=button_width, height=button_height, command=button_land_drone)
-drone_land_button.grid(row=7, column=1, padx=10, pady=10)
+control_rotate_right = tkinter.Button(control_frame, text="Rotate Right", width=button_width, height=button_height, command=lambda: threading.Thread(target=me.rotate_clockwise, daemon=True, args=[30]).start())
+control_rotate_right.grid(row=1, column=2, padx=10, pady=10)
 
-# Flip Frame placed next to the control buttons (to the right)
+
+# Flip Frame
 flip_frame = tkinter.LabelFrame(drone_frame, text="Flip")
-flip_frame.grid(row=8, column=1, padx=20, pady=20)
+flip_frame.grid(row=9, column=1, padx=20, pady=20)
 
 flip_forward = tkinter.Button(flip_frame, text="Forward", width=button_width, height=button_height, command=lambda: threading.Thread(target=me.flip_forward, daemon=True).start())
 flip_forward.grid(row=1, column=1, padx=10, pady=10)
@@ -410,13 +487,15 @@ flip_right.grid(row=2, column=2, padx=10, pady=10)
 flip_backward = tkinter.Button(flip_frame, text="Backward", width=button_width, height=button_height, command=lambda: threading.Thread(target=me.flip_back, daemon=True).start())
 flip_backward.grid(row=3, column=1, padx=10, pady=10)
 
+
 # QR Frame
 qr_code_frame = tkinter.LabelFrame(drone_frame, text="QR Code")
-qr_code_frame.grid(row=9, column=0, columnspan=2, sticky="news", padx=20, pady=20)
+qr_code_frame.grid(row=10, column=0, columnspan=2, sticky="news", padx=20, pady=20)
 
 text_qr_code = tkinter.Text(qr_code_frame, height=5, width=30)
 text_qr_code.grid(row=0, column=0, sticky="ew", padx=10, pady=10)
 text_qr_code.config(state="disabled")
+
 
 # Bild Frame
 image_frame = tkinter.LabelFrame(frame, text="Image")
