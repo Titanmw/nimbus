@@ -11,6 +11,7 @@ button_width = 8
 button_height = 4
 
 connected = False
+send_control_flag = False
 face_detection = False
 face_center = False
 qr_detection = False
@@ -441,34 +442,73 @@ drone_takeoff_button.grid(row=8, column=0, padx=10, pady=10)
 drone_land_button = tkinter.Button(drone_frame, text="Land", width=button_width, height=button_height, command=lambda: threading.Thread(target=me.land, daemon=True).start())
 drone_land_button.grid(row=8, column=1, padx=10, pady=10)
 
-
 # Control Frame
+def send_rc_control_thread(left_right, forward_backward, up_down, yaw):
+    threading.Thread(target=me.send_rc_control, daemon=True, args=[left_right, forward_backward, up_down, yaw]).start()
+
+def start_sending_rc_control(left_right, forward_backward, up_down, yaw):
+    def send_rc_control_continuously():
+        while send_control_flag:  # Continue sending commands while the flag is True
+            me.send_rc_control(left_right, forward_backward, up_down, yaw)
+    global send_control_flag
+    send_control_flag = True
+    threading.Thread(target=send_rc_control_continuously, daemon=True).start()
+
+# Define the function to stop sending RC control values when the button is released
+def stop_sending_rc_control():
+    global send_control_flag
+    send_control_flag = False
+
 control_frame = tkinter.LabelFrame(drone_frame, text="Controls")
 control_frame.grid(row=9, column=0, padx=20, pady=20)
 
-control_forward = tkinter.Button(control_frame, text="Forward", width=button_width, height=button_height, command=lambda: threading.Thread(target=me.move_forward, daemon=True, args=[10]).start())
+# Forward button
+control_forward = tkinter.Button(control_frame, text="Forward", width=button_width, height=button_height)
 control_forward.grid(row=1, column=1, padx=10, pady=10)
+control_forward.bind('<ButtonPress-1>', lambda event: start_sending_rc_control(0, 10, 0, 0))
+control_forward.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
 
-control_left = tkinter.Button(control_frame, text="Left", width=button_width, height=button_height, command=lambda: threading.Thread(target=me.move_left, daemon=True, args=[10]).start())
+# Left button
+control_left = tkinter.Button(control_frame, text="Left", width=button_width, height=button_height)
 control_left.grid(row=2, column=0, padx=10, pady=10)
+control_left.bind('<ButtonPress-1>', lambda event: start_sending_rc_control(-10, 0, 0, 0))
+control_left.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
 
-control_right = tkinter.Button(control_frame, text="Right", width=button_width, height=button_height, command=lambda: threading.Thread(target=me.move_right, daemon=True, args=[10]).start())
+# Right button
+control_right = tkinter.Button(control_frame, text="Right", width=button_width, height=button_height)
 control_right.grid(row=2, column=2, padx=10, pady=10)
+control_right.bind('<ButtonPress-1>', lambda event: start_sending_rc_control(10, 0, 0, 0))
+control_right.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
 
-control_back = tkinter.Button(control_frame, text="Back", width=button_width, height=button_height, command=lambda: threading.Thread(target=me.move_back, daemon=True, args=[10]).start())
+# Back button
+control_back = tkinter.Button(control_frame, text="Back", width=button_width, height=button_height)
 control_back.grid(row=3, column=1, padx=10, pady=10)
+control_back.bind('<ButtonPress-1>', lambda event: start_sending_rc_control(0, -10, 0, 0))
+control_back.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
 
-control_up = tkinter.Button(control_frame, text="Up", width=button_width, height=button_height, command=lambda: threading.Thread(target=me.move_up, daemon=True, args=[10]).start())
+# Up button
+control_up = tkinter.Button(control_frame, text="Up", width=button_width, height=button_height)
 control_up.grid(row=1, column=3, padx=10, pady=10)
+control_up.bind('<ButtonPress-1>', lambda event: start_sending_rc_control(0, 0, 10, 0))
+control_up.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
 
-control_down = tkinter.Button(control_frame, text="Down", width=button_width, height=button_height, command=lambda: threading.Thread(target=me.move_down, daemon=True, args=[10]).start())
+# Down button
+control_down = tkinter.Button(control_frame, text="Down", width=button_width, height=button_height)
 control_down.grid(row=3, column=3, padx=10, pady=10)
+control_down.bind('<ButtonPress-1>', lambda event: start_sending_rc_control(0, 0, -10, 0))
+control_down.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
 
-control_rotate_left = tkinter.Button(control_frame, text="Rotate Left", width=button_width, height=button_height, command=lambda: threading.Thread(target=me.rotate_counter_clockwise, daemon=True, args=[30]).start())
+# Rotate Left button
+control_rotate_left = tkinter.Button(control_frame, text="Rotate Left", width=button_width, height=button_height)
 control_rotate_left.grid(row=1, column=0, padx=10, pady=10)
+control_rotate_left.bind('<ButtonPress-1>', lambda event: start_sending_rc_control(0, 0, 0, -30))
+control_rotate_left.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
 
-control_rotate_right = tkinter.Button(control_frame, text="Rotate Right", width=button_width, height=button_height, command=lambda: threading.Thread(target=me.rotate_clockwise, daemon=True, args=[30]).start())
+# Rotate Right button
+control_rotate_right = tkinter.Button(control_frame, text="Rotate Right", width=button_width, height=button_height)
 control_rotate_right.grid(row=1, column=2, padx=10, pady=10)
+control_rotate_right.bind('<ButtonPress-1>', lambda event: start_sending_rc_control(0, 0, 0, 30))
+control_rotate_right.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
 
 
 # Flip Frame
