@@ -1,4 +1,4 @@
-import tkinter
+import tkinter as tk
 from tkinter import ttk, messagebox
 from PIL import ImageTk, Image
 import threading
@@ -8,7 +8,7 @@ import mediapipe as mp
 import numpy as np
 
 button_width = 8
-button_height = 4
+# button_height = 4
 
 connected = False
 send_control_flag = False
@@ -19,6 +19,29 @@ qr_code_center = False
 
 last_command_id = None
 qr_controlled = False
+main_bg_color = '#2E2E2E'
+
+def create_darkmode_styles():
+    style = ttk.Style()
+    style.theme_use('clam')  # Verwende ein modernes Theme
+
+    # Definiere die Hintergrundfarbe, die du für die "Transparenz" simulieren willst
+    parent_bg_color = '#2E2E2E'  # Gleiche Hintergrundfarbe wie das übergeordnete Widget (z.B. Frame)
+
+    # Farben und Schriftarten für Buttons und Labels im Darkmode
+    style.configure('TButton', font=('Helvetica', 12, 'bold'), background='#333333', foreground='#00BFFF', padding=10)
+    style.map('TButton', background=[('active', '#444444')], foreground=[('active', '#00BFFF')])
+
+    # Labels und LabelFrame Schriftfarbe auf Weiß (#FFFFFF) ändern und Hintergrund an das übergeordnete Widget anpassen
+    style.configure('TLabel', font=('Helvetica', 12), background=parent_bg_color, foreground='#FFFFFF', padding=5)
+    style.configure('TFrame', background=parent_bg_color)
+
+    # Der LabelFrame hat den gleichen Hintergrund wie das übergeordnete Widget für den transparenten Effekt
+    style.configure('TLabelFrame', background=parent_bg_color, foreground='#FFFFFF', font=('Helvetica', 14, 'bold'))
+
+    # Textfelder ebenfalls anpassen
+    style.configure('TText', background='#1E1E1E', foreground='#00BFFF')
+
 
 def button_connect_drone():
     global connected
@@ -232,8 +255,8 @@ def update_drone_image():
                         cv2.line(image, pt1, pt2, color=(0, 255, 0), thickness=2)
 
                     text_qr_code.config(state="normal")
-                    text_qr_code.delete("1.0", tkinter.END)
-                    text_qr_code.insert(tkinter.END, decoded_text)
+                    text_qr_code.delete("1.0", tk.END)
+                    text_qr_code.insert(tk.END, decoded_text)
                     text_qr_code.config(state="disabled")
                     text_qr_code.update()
 
@@ -322,7 +345,7 @@ def button_qr_detect_toggle():
         qr_detection = False
         drone_qr_detect.configure(text='OFF')
         text_qr_code.config(state="normal")
-        text_qr_code.delete("1.0", tkinter.END)
+        text_qr_code.delete("1.0", tk.END)
         text_qr_code.config(state="disabled")
         text_qr_code.update()
     else:
@@ -356,10 +379,12 @@ def button_qr_controlled_toggle():
 
 me = tello.Tello()
 
-window = tkinter.Tk()
+window = tk.Tk()
 window.title("Tello Drone Controller")
-frame = tkinter.Frame(window)
-frame.pack()
+frame = ttk.Frame(window)
+frame.pack(padx=20, pady=20, fill="both", expand=True)
+
+create_darkmode_styles()
 
 mp_face_detection = mp.solutions.face_detection
 mp_drawing = mp.solutions.drawing_utils
@@ -367,79 +392,81 @@ mp_face_detection = mp_face_detection.FaceDetection(model_selection=0, min_detec
 
 
 # Drone Frame
-drone_frame = tkinter.LabelFrame(frame, text="Drone")
+drone_frame = tk.LabelFrame(frame, text="Drone", background=main_bg_color, fg="white")
 drone_frame.grid(row=0, column=0, sticky="news", padx=20, pady=20)
 
-drone_status_label = tkinter.Label(drone_frame, text="Status")
+drone_status_label = ttk.Label(drone_frame, text="Status")
 drone_status_label.grid(row=0, column=0)
 
-drone_status = tkinter.Label(drone_frame, text="offline")
+drone_status = ttk.Label(drone_frame, text="offline")
 drone_status.grid(row=0, column=1, padx=10, pady=10)
 
-drone_connect_button = tkinter.Button(drone_frame, text="Connect", command=button_connect_drone)
+drone_connect_button = ttk.Button(drone_frame, text="Connect", command=button_connect_drone)
 drone_connect_button.grid(row=0, column=2, padx=10, pady=10)
 
-drone_battery_label = tkinter.Label(drone_frame, text="Battery")
+drone_battery_label = ttk.Label(drone_frame, text="Battery")
 drone_battery_label.grid(row=1, column=0)
 
-drone_battery = tkinter.Label(drone_frame, text="-")
+drone_battery = ttk.Label(drone_frame, text="-")
 drone_battery.grid(row=1, column=1, padx=10, pady=10)
 
-drone_height_label = tkinter.Label(drone_frame, text="Height")
+drone_height_label = ttk.Label(drone_frame, text="Height")
 drone_height_label.grid(row=2, column=0)
 
-drone_height = tkinter.Label(drone_frame, text="-")
+drone_height = ttk.Label(drone_frame, text="-")
 drone_height.grid(row=2, column=1, padx=10, pady=10)
 
-drone_face_detect_label = tkinter.Label(drone_frame, text="Face Detection")
+drone_face_detect_label = ttk.Label(drone_frame, text="Face Detection")
 drone_face_detect_label.grid(row=3, column=0)
 
-drone_face_detect = tkinter.Label(drone_frame, text="OFF")
+drone_face_detect = ttk.Label(drone_frame, text="OFF")
 drone_face_detect.grid(row=3, column=1, padx=10, pady=10)
 
-drone_face_detect_button = tkinter.Button(drone_frame, text="Toggle", command=button_face_detection_toggle)
+drone_face_detect_button = ttk.Button(drone_frame, text="Toggle", command=button_face_detection_toggle)
 drone_face_detect_button.grid(row=3, column=2, padx=10, pady=10)
 
-drone_face_center_label = tkinter.Label(drone_frame, text="Center Face")
+drone_face_center_label = ttk.Label(drone_frame, text="Center Face")
 drone_face_center_label.grid(row=4, column=0)
 
-drone_face_center = tkinter.Label(drone_frame, text="OFF")
+drone_face_center = ttk.Label(drone_frame, text="OFF")
 drone_face_center.grid(row=4, column=1, padx=10, pady=10)
 
-drone_face_button = tkinter.Button(drone_frame, text="Toggle", command=button_face_center_toggle)
+drone_face_button = ttk.Button(drone_frame, text="Toggle", command=button_face_center_toggle)
 drone_face_button.grid(row=4, column=2, padx=10, pady=10)
 
-drone_qr_detect_label = tkinter.Label(drone_frame, text="QR-Code Detection")
+drone_qr_detect_label = ttk.Label(drone_frame, text="QR-Code Detection")
 drone_qr_detect_label.grid(row=5, column=0)
 
-drone_qr_detect = tkinter.Label(drone_frame, text="OFF")
+drone_qr_detect = ttk.Label(drone_frame, text="OFF")
 drone_qr_detect.grid(row=5, column=1, padx=10, pady=10)
 
-drone_qr_detect_button = tkinter.Button(drone_frame, text="Toggle", command=button_qr_detect_toggle)
+drone_qr_detect_button = ttk.Button(drone_frame, text="Toggle", command=button_qr_detect_toggle)
 drone_qr_detect_button.grid(row=5, column=2, padx=10, pady=10)
 
-drone_qr_center_label = tkinter.Label(drone_frame, text="Center QR-Code")
+drone_qr_center_label = ttk.Label(drone_frame, text="Center QR-Code")
 drone_qr_center_label.grid(row=6, column=0)
 
-drone_qr_center = tkinter.Label(drone_frame, text="OFF")
+drone_qr_center = ttk.Label(drone_frame, text="OFF")
 drone_qr_center.grid(row=6, column=1, padx=10, pady=10)
 
-drone_qr_center_button = tkinter.Button(drone_frame, text="Toggle", command=button_qr_center_toggle)
+drone_qr_center_button = ttk.Button(drone_frame, text="Toggle", command=button_qr_center_toggle)
 drone_qr_center_button.grid(row=6, column=2, padx=10, pady=10)
 
-drone_qr_controlled_label = tkinter.Label(drone_frame, text="QR-Code conrolled")
+drone_qr_controlled_label = ttk.Label(drone_frame, text="QR-Code conrolled")
 drone_qr_controlled_label.grid(row=7, column=0)
 
-drone_qr_controlled = tkinter.Label(drone_frame, text="OFF")
+drone_qr_controlled = ttk.Label(drone_frame, text="OFF")
 drone_qr_controlled.grid(row=7, column=1, padx=10, pady=10)
 
-drone_qr_controlled_button = tkinter.Button(drone_frame, text="Toggle", command=button_qr_controlled_toggle)
+drone_qr_controlled_button = ttk.Button(drone_frame, text="Toggle", command=button_qr_controlled_toggle)
 drone_qr_controlled_button.grid(row=7, column=2, padx=10, pady=10)
 
-drone_takeoff_button = tkinter.Button(drone_frame, text="Take off", width=button_width, height=button_height, command=lambda: threading.Thread(target=me.takeoff, daemon=True).start())
+drone_takeoff_button = ttk.Button(drone_frame, text="Take off", width=button_width,
+                                  command=lambda: threading.Thread(target=me.takeoff, daemon=True).start())
 drone_takeoff_button.grid(row=8, column=0, padx=10, pady=10)
 
-drone_land_button = tkinter.Button(drone_frame, text="Land", width=button_width, height=button_height, command=lambda: threading.Thread(target=me.land, daemon=True).start())
+drone_land_button = ttk.Button(drone_frame, text="Land", width=button_width,
+                               command=lambda: threading.Thread(target=me.land, daemon=True).start())
 drone_land_button.grid(row=8, column=1, padx=10, pady=10)
 
 # Control Frame
@@ -459,93 +486,98 @@ def stop_sending_rc_control():
     global send_control_flag
     send_control_flag = False
 
-control_frame = tkinter.LabelFrame(drone_frame, text="Controls")
+control_frame = tk.LabelFrame(drone_frame, text="Controls", background=main_bg_color, fg="white")
 control_frame.grid(row=9, column=0, padx=20, pady=20)
 
 # Forward button
-control_forward = tkinter.Button(control_frame, text="Forward", width=button_width, height=button_height)
+control_forward = ttk.Button(control_frame, text="Forward", width=button_width)
 control_forward.grid(row=1, column=1, padx=10, pady=10)
 control_forward.bind('<ButtonPress-1>', lambda event: start_sending_rc_control(0, 10, 0, 0))
 control_forward.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
 
 # Left button
-control_left = tkinter.Button(control_frame, text="Left", width=button_width, height=button_height)
+control_left = ttk.Button(control_frame, text="Left", width=button_width)
 control_left.grid(row=2, column=0, padx=10, pady=10)
 control_left.bind('<ButtonPress-1>', lambda event: start_sending_rc_control(-10, 0, 0, 0))
 control_left.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
 
 # Right button
-control_right = tkinter.Button(control_frame, text="Right", width=button_width, height=button_height)
+control_right = ttk.Button(control_frame, text="Right", width=button_width)
 control_right.grid(row=2, column=2, padx=10, pady=10)
 control_right.bind('<ButtonPress-1>', lambda event: start_sending_rc_control(10, 0, 0, 0))
 control_right.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
 
 # Back button
-control_back = tkinter.Button(control_frame, text="Back", width=button_width, height=button_height)
+control_back = ttk.Button(control_frame, text="Back", width=button_width)
 control_back.grid(row=3, column=1, padx=10, pady=10)
 control_back.bind('<ButtonPress-1>', lambda event: start_sending_rc_control(0, -10, 0, 0))
 control_back.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
 
 # Up button
-control_up = tkinter.Button(control_frame, text="Up", width=button_width, height=button_height)
+control_up = ttk.Button(control_frame, text="Up", width=button_width)
 control_up.grid(row=1, column=3, padx=10, pady=10)
 control_up.bind('<ButtonPress-1>', lambda event: start_sending_rc_control(0, 0, 10, 0))
 control_up.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
 
 # Down button
-control_down = tkinter.Button(control_frame, text="Down", width=button_width, height=button_height)
+control_down = ttk.Button(control_frame, text="Down", width=button_width)
 control_down.grid(row=3, column=3, padx=10, pady=10)
 control_down.bind('<ButtonPress-1>', lambda event: start_sending_rc_control(0, 0, -10, 0))
 control_down.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
 
 # Rotate Left button
-control_rotate_left = tkinter.Button(control_frame, text="Rotate Left", width=button_width, height=button_height)
+control_rotate_left = ttk.Button(control_frame, text="Rotate Left", width=button_width)
 control_rotate_left.grid(row=1, column=0, padx=10, pady=10)
 control_rotate_left.bind('<ButtonPress-1>', lambda event: start_sending_rc_control(0, 0, 0, -30))
 control_rotate_left.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
 
 # Rotate Right button
-control_rotate_right = tkinter.Button(control_frame, text="Rotate Right", width=button_width, height=button_height)
+control_rotate_right = ttk.Button(control_frame, text="Rotate Right", width=button_width)
 control_rotate_right.grid(row=1, column=2, padx=10, pady=10)
 control_rotate_right.bind('<ButtonPress-1>', lambda event: start_sending_rc_control(0, 0, 0, 30))
 control_rotate_right.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
 
 
 # Flip Frame
-flip_frame = tkinter.LabelFrame(drone_frame, text="Flip")
+flip_frame = tk.LabelFrame(drone_frame, text="Flip", background=main_bg_color, fg="white")
 flip_frame.grid(row=9, column=1, padx=20, pady=20)
 
-flip_forward = tkinter.Button(flip_frame, text="Forward", width=button_width, height=button_height, command=lambda: threading.Thread(target=me.flip_forward, daemon=True).start())
+flip_forward = ttk.Button(flip_frame, text="Forward", width=button_width,
+                          command=lambda: threading.Thread(target=me.flip_forward, daemon=True).start())
 flip_forward.grid(row=1, column=1, padx=10, pady=10)
 
-flip_left = tkinter.Button(flip_frame, text="Left", width=button_width, height=button_height, command=lambda: threading.Thread(target=me.flip_left, daemon=True).start())
+flip_left = ttk.Button(flip_frame, text="Left", width=button_width,
+                       command=lambda: threading.Thread(target=me.flip_left, daemon=True).start())
 flip_left.grid(row=2, column=0, padx=10, pady=10)
 
-flip_right = tkinter.Button(flip_frame, text="Right", width=button_width, height=button_height, command=lambda: threading.Thread(target=me.flip_right, daemon=True).start())
+flip_right = ttk.Button(flip_frame, text="Right", width=button_width,
+                        command=lambda: threading.Thread(target=me.flip_right, daemon=True).start())
 flip_right.grid(row=2, column=2, padx=10, pady=10)
 
-flip_backward = tkinter.Button(flip_frame, text="Backward", width=button_width, height=button_height, command=lambda: threading.Thread(target=me.flip_back, daemon=True).start())
+flip_backward = ttk.Button(flip_frame, text="Backward", width=button_width,
+                           command=lambda: threading.Thread(target=me.flip_back, daemon=True).start())
 flip_backward.grid(row=3, column=1, padx=10, pady=10)
 
 
 # QR Frame
-qr_code_frame = tkinter.LabelFrame(drone_frame, text="QR Code")
+qr_code_frame = tk.LabelFrame(drone_frame, text="QR Code", background=main_bg_color, fg="white")
 qr_code_frame.grid(row=10, column=0, columnspan=2, sticky="news", padx=20, pady=20)
 
-text_qr_code = tkinter.Text(qr_code_frame, height=5, width=30)
+text_qr_code = tk.Text(qr_code_frame, height=5, width=30, background=main_bg_color, fg="white")
 text_qr_code.grid(row=0, column=0, sticky="ew", padx=10, pady=10)
 text_qr_code.config(state="disabled")
 
 
 # Bild Frame
-image_frame = tkinter.LabelFrame(frame, text="Image")
+image_frame = tk.LabelFrame(frame, text="Image", background=main_bg_color, fg="white")
 image_frame.grid(row=0, column=1, sticky="news", padx=20, pady=20)
 
-image_capture = tkinter.Label(image_frame, text="Capture")
+image_capture = ttk.Label(image_frame, text="Capture")
 image_capture.grid(row=0, column=0, padx=10, pady=10, sticky="ew")
 
 
 # Main GUI Loop
 show_default_image()
 
+window.configure(bg=main_bg_color)
 window.mainloop()
