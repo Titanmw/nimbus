@@ -147,18 +147,18 @@ def adjust_drone_position(offset, size, desired_size):
     if abs(offset[0]) > offset_x_threshold:
         if offset[0] > 0:
             print("Drohne nach rechts bewegen")
-            me.send_rc_control(offset_x_threshold / 2, 0, 0, 0)
+            me.send_rc_control(20, 0, 0, 0)
         else:
             print("Drohne nach links bewegen")
-            me.send_rc_control(-(offset_x_threshold / 2), 0, 0, 0)
+            me.send_rc_control(-20, 0, 0, 0)
 
     if abs(offset[1]) > offset_y_threshold:
         if offset[1] > 0:
             print("Drohne nach unten bewegen")
-            me.send_rc_control(0, 0, -(offset_y_threshold / 2), 0)
+            me.send_rc_control(0, 0, -20 , 0)
         else:
             print("Drohne nach oben bewegen")
-            me.send_rc_control(0, 0, offset_y_threshold / 2, 0)
+            me.send_rc_control(0, 0, 20, 0)
 
     size_threshold = 30
     if abs(size_error) > size_threshold:
