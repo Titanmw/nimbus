@@ -309,7 +309,7 @@ def update_drone_image():
         window.after(20)
 
 def show_default_image():
-    default_img = Image.open("default_image.png")
+    default_img = Image.open("./default_image.png")
     default_img = default_img.resize((960, 720))
     imgtk = ImageTk.PhotoImage(image=default_img)
     image_capture.config(image=imgtk)
@@ -382,7 +382,7 @@ me = tello.Tello()
 window = tk.Tk()
 window.title("Tello Drone Controller")
 frame = ttk.Frame(window)
-frame.pack(padx=20, pady=20, fill="both", expand=True)
+frame.pack(fill="both", expand=True)
 
 create_darkmode_styles()
 
@@ -393,7 +393,7 @@ mp_face_detection = mp_face_detection.FaceDetection(model_selection=0, min_detec
 
 # Drone Frame
 drone_frame = tk.LabelFrame(frame, text="Drone", background=main_bg_color, fg="white")
-drone_frame.grid(row=0, column=0, sticky="news", padx=20, pady=20)
+drone_frame.grid(row=0, column=0, sticky="news", padx=10, pady=10)
 
 drone_status_label = ttk.Label(drone_frame, text="Status")
 drone_status_label.grid(row=0, column=0)
@@ -487,7 +487,7 @@ def stop_sending_rc_control():
     send_control_flag = False
 
 control_frame = tk.LabelFrame(drone_frame, text="Controls", background=main_bg_color, fg="white")
-control_frame.grid(row=9, column=0, padx=20, pady=20)
+control_frame.grid(row=9, column=0, columnspan=2, padx=10, pady=10)
 
 # Forward button
 control_forward = ttk.Button(control_frame, text="Forward", width=button_width)
@@ -540,7 +540,7 @@ control_rotate_right.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_con
 
 # Flip Frame
 flip_frame = tk.LabelFrame(drone_frame, text="Flip", background=main_bg_color, fg="white")
-flip_frame.grid(row=9, column=1, padx=20, pady=20)
+flip_frame.grid(row=9, column=2, padx=10, pady=10)
 
 flip_forward = ttk.Button(flip_frame, text="Forward", width=button_width,
                           command=lambda: threading.Thread(target=me.flip_forward, daemon=True).start())
@@ -560,17 +560,17 @@ flip_backward.grid(row=3, column=1, padx=10, pady=10)
 
 
 # QR Frame
-qr_code_frame = tk.LabelFrame(drone_frame, text="QR Code", background=main_bg_color, fg="white")
-qr_code_frame.grid(row=10, column=0, columnspan=2, sticky="news", padx=20, pady=20)
+qr_label = ttk.Label(drone_frame, text="QR Code Value")
+qr_label.grid(row=10, column=0, padx=10, pady=10)
 
-text_qr_code = tk.Text(qr_code_frame, height=5, width=30, background=main_bg_color, fg="white")
-text_qr_code.grid(row=0, column=0, sticky="ew", padx=10, pady=10)
+text_qr_code = tk.Text(drone_frame, height=5, width=30, background=main_bg_color, fg="white")
+text_qr_code.grid(row=10, column=1, columnspan=2, sticky="ew", padx=10, pady=10)
 text_qr_code.config(state="disabled")
 
 
 # Bild Frame
 image_frame = tk.LabelFrame(frame, text="Image", background=main_bg_color, fg="white")
-image_frame.grid(row=0, column=1, sticky="news", padx=20, pady=20)
+image_frame.grid(row=0, column=1, sticky="news", padx=10, pady=10)
 
 image_capture = ttk.Label(image_frame, text="Capture")
 image_capture.grid(row=0, column=0, padx=10, pady=10, sticky="ew")
