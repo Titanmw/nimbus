@@ -44,6 +44,35 @@ def create_darkmode_styles():
     style.configure('TText', background='#1E1E1E', foreground='#00BFFF')
 
 
+def show_error(message):
+    error_log.config(state="normal")  # Aktiviere das Textfeld, um Text hinzuzufügen
+    error_log.insert(tk.END, message + "\n")  # Füge die Fehlermeldung hinzu
+    error_log.config(state="disabled")  # Deaktiviere das Textfeld, um Bearbeitungen zu verhindern
+    error_log.see(tk.END)  # Scrolle nach unten, um die neueste Nachricht anzuzeigen
+
+
+def check_drone_status():
+    global connected
+
+    if not connected:
+        return  # Stoppe die Statusüberprüfung, wenn die Drohne nicht verbunden ist
+
+    try:
+        # Überprüfen des Batteriestands
+        battery = me.get_battery()
+        if battery < 20:
+            show_error("Warnung: Der Batteriestand ist niedrig!")
+
+        # Überprüfen der Flughöhe
+        height = me.get_height()
+        if height < 50:
+            show_error("Warnung: Die Flughöhe ist sehr niedrig!")
+
+    except Exception as e:
+        show_error(f"Fehler beim Abrufen des Drohnenstatus: {e}")
+        return
+
+
 def button_connect_drone():
     global connected
 
@@ -236,6 +265,7 @@ def update_drone_image():
     qr_detector = cv2.QRCodeDetector()
 
     while connected:
+        check_drone_status()
         battery_text = "-"
         try:
             battery_text = me.get_battery()
@@ -583,9 +613,16 @@ qr_label = ttk.Label(drone_frame, text="QR Code Value")
 qr_label.grid(row=10, column=0, padx=10, pady=10)
 
 text_qr_code = tk.Text(drone_frame, height=5, width=30, background=main_bg_color, fg="white")
-text_qr_code.grid(row=10, column=1, columnspan=2, sticky="ew", padx=10, pady=10)
+text_qr_code.grid(row=10, column=1, sticky="ew", padx=10, pady=10)
 text_qr_code.config(state="disabled")
 
+# Error Frame
+error_frame = tk.LabelFrame(drone_frame, text="Error Log", background=main_bg_color, fg="white")
+error_frame.grid(row=10, column=2, columnspan=2, sticky="ew", padx=10, pady=10)
+
+error_log = tk.Text(error_frame, height=5, width=50, background=main_bg_color, fg="red")
+error_log.grid(row=0, column=0, padx=10, pady=10)
+error_log.config(state="disabled")
 
 # Bild Frame
 image_frame = tk.LabelFrame(frame, text="Image", background=main_bg_color, fg="white")
