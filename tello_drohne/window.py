@@ -1,3 +1,4 @@
+import time
 import tkinter as tk
 from tkinter import ttk, messagebox
 from PIL import ImageTk, Image
@@ -140,24 +141,24 @@ def adjust_drone_position(offset, size, desired_size):
 
     size_error = size - desired_size
 
-    offset_x_threshold = 100
-    offset_y_threshold = 100
+    offset_x_threshold = 200
+    offset_y_threshold = 200
 
     if abs(offset[0]) > offset_x_threshold:
         if offset[0] > 0:
             print("Drohne nach rechts bewegen")
-            me.send_rc_control(offset_x_threshold, 0, 0, 0)
+            me.send_rc_control(offset_x_threshold / 2, 0, 0, 0)
         else:
             print("Drohne nach links bewegen")
-            me.send_rc_control(-offset_x_threshold, 0, 0, 0)
+            me.send_rc_control(-(offset_x_threshold / 2), 0, 0, 0)
 
     if abs(offset[1]) > offset_y_threshold:
         if offset[1] > 0:
             print("Drohne nach unten bewegen")
-            me.send_rc_control(0, 0, -offset_y_threshold, 0)
+            me.send_rc_control(0, 0, -(offset_y_threshold / 2), 0)
         else:
             print("Drohne nach oben bewegen")
-            me.send_rc_control(0, 0, offset_y_threshold, 0)
+            me.send_rc_control(0, 0, offset_y_threshold / 2, 0)
 
     size_threshold = 30
     if abs(size_error) > size_threshold:
@@ -203,6 +204,18 @@ def process_qr_command(decoded_text):
         elif action == "COMMAND:BACKWARD":
             print("Befehl: Rückwärts")
             threading.Thread(target=me.move_back, daemon=True, args=[20]).start()
+        elif action == "COMMAND:FLIP FORWARD":
+            print("Befehl: Vorwärts")
+            threading.Thread(target=me.flip_forward, daemon=True).start()
+        elif action == "COMMAND:FLIP LEFT":
+            print("Befehl: Links")
+            threading.Thread(target=me.flip_left, daemon=True).start()
+        elif action == "COMMAND:FLIP RIGHT":
+            print("Befehl: Rechts")
+            threading.Thread(target=me.flip_right, daemon=True).start()
+        elif action == "COMMAND:FLIP BACKWARD":
+            print("Befehl: Rückwärts")
+            threading.Thread(target=me.flip_back, daemon=True).start()
         elif action == "COMMAND:UP":
             print("Befehl: Hoch")
             threading.Thread(target=me.move_up, daemon=True, args=[20]).start()
@@ -470,13 +483,17 @@ drone_land_button = ttk.Button(drone_frame, text="Land", width=button_width,
 drone_land_button.grid(row=8, column=1, padx=10, pady=10)
 
 # Control Frame
-def send_rc_control_thread(left_right, forward_backward, up_down, yaw):
-    threading.Thread(target=me.send_rc_control, daemon=True, args=[left_right, forward_backward, up_down, yaw]).start()
-
 def start_sending_rc_control(left_right, forward_backward, up_down, yaw):
+    print("start rc")
+
     def send_rc_control_continuously():
+        global send_control_flag
+
         while send_control_flag:  # Continue sending commands while the flag is True
             me.send_rc_control(left_right, forward_backward, up_down, yaw)
+            time.sleep(0.1)
+        
+        me.send_rc_control(0, 0, 0, 0)
     global send_control_flag
     send_control_flag = True
     threading.Thread(target=send_rc_control_continuously, daemon=True).start()
@@ -484,6 +501,8 @@ def start_sending_rc_control(left_right, forward_backward, up_down, yaw):
 # Define the function to stop sending RC control values when the button is released
 def stop_sending_rc_control():
     global send_control_flag
+    print("stop rc")
+
     send_control_flag = False
 
 control_frame = tk.LabelFrame(drone_frame, text="Controls", background=main_bg_color, fg="white")
@@ -492,37 +511,37 @@ control_frame.grid(row=9, column=0, columnspan=2, padx=10, pady=10)
 # Forward button
 control_forward = ttk.Button(control_frame, text="Forward", width=button_width)
 control_forward.grid(row=1, column=1, padx=10, pady=10)
-control_forward.bind('<ButtonPress-1>', lambda event: start_sending_rc_control(0, 10, 0, 0))
+control_forward.bind('<ButtonPress-1>', lambda event: start_sending_rc_control(0, 20, 0, 0))
 control_forward.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
 
 # Left button
 control_left = ttk.Button(control_frame, text="Left", width=button_width)
 control_left.grid(row=2, column=0, padx=10, pady=10)
-control_left.bind('<ButtonPress-1>', lambda event: start_sending_rc_control(-10, 0, 0, 0))
+control_left.bind('<ButtonPress-1>', lambda event: start_sending_rc_control(-20, 0, 0, 0))
 control_left.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
 
 # Right button
 control_right = ttk.Button(control_frame, text="Right", width=button_width)
 control_right.grid(row=2, column=2, padx=10, pady=10)
-control_right.bind('<ButtonPress-1>', lambda event: start_sending_rc_control(10, 0, 0, 0))
+control_right.bind('<ButtonPress-1>', lambda event: start_sending_rc_control(20, 0, 0, 0))
 control_right.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
 
 # Back button
 control_back = ttk.Button(control_frame, text="Back", width=button_width)
 control_back.grid(row=3, column=1, padx=10, pady=10)
-control_back.bind('<ButtonPress-1>', lambda event: start_sending_rc_control(0, -10, 0, 0))
+control_back.bind('<ButtonPress-1>', lambda event: start_sending_rc_control(0, -20, 0, 0))
 control_back.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
 
 # Up button
 control_up = ttk.Button(control_frame, text="Up", width=button_width)
 control_up.grid(row=1, column=3, padx=10, pady=10)
-control_up.bind('<ButtonPress-1>', lambda event: start_sending_rc_control(0, 0, 10, 0))
+control_up.bind('<ButtonPress-1>', lambda event: start_sending_rc_control(0, 0, 20, 0))
 control_up.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
 
 # Down button
 control_down = ttk.Button(control_frame, text="Down", width=button_width)
 control_down.grid(row=3, column=3, padx=10, pady=10)
-control_down.bind('<ButtonPress-1>', lambda event: start_sending_rc_control(0, 0, -10, 0))
+control_down.bind('<ButtonPress-1>', lambda event: start_sending_rc_control(0, 0, -20, 0))
 control_down.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
 
 # Rotate Left button
