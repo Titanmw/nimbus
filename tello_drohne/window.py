@@ -12,11 +12,15 @@ button_width = 8
 # button_height = 4
 
 connected = False
-send_control_flag = False
 face_detection = False
 face_center = False
 qr_detection = False
 qr_code_center = False
+
+send_control_flag = False
+control_thread = None
+control_lock = threading.Lock()
+control_priority = None  # "user" or "ai"
 
 last_command_id = None
 qr_controlled = False
@@ -43,13 +47,11 @@ def create_darkmode_styles():
     # Textfelder ebenfalls anpassen
     style.configure('TText', background='#1E1E1E', foreground='#00BFFF')
 
-
 def show_error(message):
     error_log.config(state="normal")  # Aktiviere das Textfeld, um Text hinzuzufügen
     error_log.insert(tk.END, message + "\n")  # Füge die Fehlermeldung hinzu
     error_log.config(state="disabled")  # Deaktiviere das Textfeld, um Bearbeitungen zu verhindern
     error_log.see(tk.END)  # Scrolle nach unten, um die neueste Nachricht anzuzeigen
-
 
 def check_drone_status():
     global connected
@@ -71,7 +73,6 @@ def check_drone_status():
     except Exception as e:
         show_error(f"Fehler beim Abrufen des Drohnenstatus: {e}")
         return
-
 
 def button_connect_drone():
     global connected
@@ -162,41 +163,115 @@ def calculate_offset_and_size(points, image):
 
     return (offset_x, offset_y), size
 
+# Start sending RC control for user
+def start_sending_rc_control_user(left_right, forward_backward, up_down, yaw):
+    global send_control_flag, control_thread, control_priority
+
+    def send_rc_control_continuously():
+        while True:
+            with control_lock:
+                if not send_control_flag or control_priority != "user":
+                    break
+            me.send_rc_control(left_right, forward_backward, up_down, yaw)
+            time.sleep(0.1)
+        
+        # Send stop command when exiting
+        me.send_rc_control(0, 0, 0, 0)
+
+    with control_lock:
+        # Prioritize user input and stop any other control
+        if control_priority != "user":
+            send_control_flag = False  # Stop any other control (AI)
+            if control_thread is not None and control_thread.is_alive():
+                control_thread.join()
+
+        # Start new user control thread
+        control_priority = "user"
+        send_control_flag = True
+        control_thread = threading.Thread(target=send_rc_control_continuously, daemon=True)
+        control_thread.start()
+
+# Start sending RC control for AI
+def start_sending_rc_control_ai(left_right, forward_backward, up_down, yaw):
+    global send_control_flag, control_thread, control_priority
+
+    def send_rc_control_continuously():
+        while True:
+            with control_lock:
+                if not send_control_flag or control_priority != "ai":
+                    break
+            me.send_rc_control(left_right, forward_backward, up_down, yaw)
+            time.sleep(0.1)
+        
+        # Send stop command when exiting
+        me.send_rc_control(0, 0, 0, 0)
+
+    with control_lock:
+        # Check if user control is active; if so, ignore AI control request
+        if control_priority == "user" and send_control_flag:
+            print("AI control ignored due to active user control")
+            return
+
+        # Start new AI control thread if no user control
+        control_priority = "ai"
+        send_control_flag = True
+        control_thread = threading.Thread(target=send_rc_control_continuously, daemon=True)
+        control_thread.start()
+
+# Stop sending RC control
+def stop_sending_rc_control():
+    global send_control_flag
+    print("Stopping RC control")
+    with control_lock:
+        send_control_flag = False
+
 def adjust_drone_position(offset, size, desired_size):
-    global me
+    global me, send_control_flag
 
     if not me.is_flying:
         return
 
     size_error = size - desired_size
 
-    offset_x_threshold = 200
-    offset_y_threshold = 200
+    offset_x_threshold = 80
+    offset_y_threshold = 80
+    size_threshold = 50
+
+    left_right = 0
+    forward_backward = 0
+    up_down = 0
 
     if abs(offset[0]) > offset_x_threshold:
         if offset[0] > 0:
             print("Drohne nach rechts bewegen")
-            me.send_rc_control(20, 0, 0, 0)
+            left_right = -10
+            # start_sending_rc_control(20, 0, 0, 0)
         else:
             print("Drohne nach links bewegen")
-            me.send_rc_control(-20, 0, 0, 0)
+            left_right = 10
+            # start_sending_rc_control(-20, 0, 0, 0)
 
     if abs(offset[1]) > offset_y_threshold:
         if offset[1] > 0:
             print("Drohne nach unten bewegen")
-            me.send_rc_control(0, 0, -20 , 0)
+            forward_backward = 10
+            # start_sending_rc_control(0, 0, -20 , 0)
         else:
             print("Drohne nach oben bewegen")
-            me.send_rc_control(0, 0, 20, 0)
+            forward_backward = -10
+            # start_sending_rc_control(0, 0, 20, 0)
 
-    size_threshold = 30
     if abs(size_error) > size_threshold:
         if size_error > 0:
             print("Drohne rückwärts bewegen")
-            me.send_rc_control(0, -20, 0, 0)
+            up_down = 10
+            # start_sending_rc_control(0, -20, 0, 0)
         else:
             print("Drohne vorwärts bewegen")
-            me.send_rc_control(0, 20, 0, 0)
+            up_down = -10
+            # start_sending_rc_control(0, 20, 0, 0)
+    
+    start_sending_rc_control_ai(left_right, forward_backward, up_down, 0)
 
 def process_qr_command(decoded_text):
     global me, last_command_id
@@ -285,16 +360,18 @@ def update_drone_image():
 
         image.flags.writeable = True
 
+        adjustments_made = False  # Track if any adjustment is made
+
         if qr_detection:
             decoded_text, points, _ = qr_detector.detectAndDecode(image)
 
             if points is not None:
-                points = points[0]
+                point = points[0]
 
                 if decoded_text:
-                    for i in range(len(points)):
-                        pt1 = tuple(map(int, points[i]))
-                        pt2 = tuple(map(int, points[(i + 1) % len(points)]))
+                    for i in range(len(point)):
+                        pt1 = tuple(map(int, point[i]))
+                        pt2 = tuple(map(int, point[(i + 1) % len(point)]))
                         cv2.line(image, pt1, pt2, color=(0, 255, 0), thickness=2)
 
                     text_qr_code.config(state="normal")
@@ -307,7 +384,7 @@ def update_drone_image():
                     if qr_controlled and decoded_text.startswith("COMMAND:"):
                         process_qr_command(decoded_text)
 
-                    offset, size = calculate_offset_and_size(points, image)
+                    offset, size = calculate_offset_and_size(point, image)
 
                     text_offset = f"Offset (x, y): ({offset[0]:.2f}, {offset[1]:.2f})"
                     text_size = f"Size: {size:.2f} px"
@@ -316,7 +393,10 @@ def update_drone_image():
                     cv2.putText(image, text_size, (10, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2, cv2.LINE_AA)
 
                     if qr_code_center and me.is_flying:
-                        adjust_drone_position(offset, size, 250)
+                        adjustments_made = True  # Mark adjustments as true if processing QR
+                        adjust_drone_position(offset, size, 70)
+            else:
+                stop_sending_rc_control()
 
         if face_detection:
             results = mp_face_detection.process(image)
@@ -325,14 +405,14 @@ def update_drone_image():
                     mp_drawing.draw_detection(image, detection)
                     face_box = detection.location_data.relative_bounding_box
                     image_height, image_width, _ = image.shape
-                    points = [
+                    point = [
                         (int(face_box.xmin * image_width), int(face_box.ymin * image_height)),
                         (int((face_box.xmin + face_box.width) * image_width), int(face_box.ymin * image_height)),
                         (int((face_box.xmin + face_box.width) * image_width), int((face_box.ymin + face_box.height) * image_height)),
                         (int(face_box.xmin * image_width), int((face_box.ymin + face_box.height) * image_height)),
                     ]
 
-                    offset, size = calculate_offset_and_size(points, image)
+                    offset, size = calculate_offset_and_size(point, image)
 
                     text_offset = f"Offset (x, y): ({offset[0]:.2f}, {offset[1]:.2f})"
                     text_size = f"Size: {size:.2f} px"
@@ -341,7 +421,11 @@ def update_drone_image():
                     cv2.putText(image, text_size, (10, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2, cv2.LINE_AA)
 
                     if face_center and me.is_flying:
-                        adjust_drone_position(offset, size, 300)
+                        adjustments_made = True  # Mark adjustments as true if processing QR
+                        adjust_drone_position(offset, size, 70)
+
+        if not adjustments_made:
+            start_sending_rc_control_ai(0, 0, 0, 0)
 
         im_pil = Image.fromarray(image)
         imgtk = ImageTk.PhotoImage(image=im_pil)
@@ -413,6 +497,7 @@ def button_qr_controlled_toggle():
 
     if qr_controlled:
         qr_controlled = False
+        last_command_id = None
         drone_qr_controlled.configure(text='OFF')
     else:
         qr_controlled = True
@@ -512,78 +597,55 @@ drone_land_button = ttk.Button(drone_frame, text="Land", width=button_width,
                                command=lambda: threading.Thread(target=me.land, daemon=True).start())
 drone_land_button.grid(row=8, column=1, padx=10, pady=10)
 
-# Control Frame
-def start_sending_rc_control(left_right, forward_backward, up_down, yaw):
-    print("start rc")
-
-    def send_rc_control_continuously():
-        global send_control_flag
-
-        while send_control_flag:  # Continue sending commands while the flag is True
-            me.send_rc_control(left_right, forward_backward, up_down, yaw)
-            time.sleep(0.1)
-        
-        me.send_rc_control(0, 0, 0, 0)
-    global send_control_flag
-    send_control_flag = True
-    threading.Thread(target=send_rc_control_continuously, daemon=True).start()
-
-# Define the function to stop sending RC control values when the button is released
-def stop_sending_rc_control():
-    global send_control_flag
-    print("stop rc")
-
-    send_control_flag = False
-
 control_frame = tk.LabelFrame(drone_frame, text="Controls", background=main_bg_color, fg="white")
 control_frame.grid(row=9, column=0, columnspan=2, padx=10, pady=10)
 
 # Forward button
 control_forward = ttk.Button(control_frame, text="Forward", width=button_width)
 control_forward.grid(row=1, column=1, padx=10, pady=10)
-control_forward.bind('<ButtonPress-1>', lambda event: start_sending_rc_control(0, 20, 0, 0))
+control_forward.bind('<ButtonPress-1>', lambda event: start_sending_rc_control_user(0, 20, 0, 0))
 control_forward.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
 
 # Left button
 control_left = ttk.Button(control_frame, text="Left", width=button_width)
 control_left.grid(row=2, column=0, padx=10, pady=10)
-control_left.bind('<ButtonPress-1>', lambda event: start_sending_rc_control(-20, 0, 0, 0))
+control_left.bind('<ButtonPress-1>', lambda event: start_sending_rc_control_user(-20, 0, 0, 0))
 control_left.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
 
 # Right button
 control_right = ttk.Button(control_frame, text="Right", width=button_width)
 control_right.grid(row=2, column=2, padx=10, pady=10)
-control_right.bind('<ButtonPress-1>', lambda event: start_sending_rc_control(20, 0, 0, 0))
+control_right.bind('<ButtonPress-1>', lambda event: start_sending_rc_control_user(20, 0, 0, 0))
 control_right.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
 
 # Back button
 control_back = ttk.Button(control_frame, text="Back", width=button_width)
 control_back.grid(row=3, column=1, padx=10, pady=10)
-control_back.bind('<ButtonPress-1>', lambda event: start_sending_rc_control(0, -20, 0, 0))
+control_back.bind('<ButtonPress-1>', lambda event: start_sending_rc_control_user(0, -20, 0, 0))
 control_back.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
 
 # Up button
 control_up = ttk.Button(control_frame, text="Up", width=button_width)
 control_up.grid(row=1, column=3, padx=10, pady=10)
-control_up.bind('<ButtonPress-1>', lambda event: start_sending_rc_control(0, 0, 20, 0))
+control_up.bind('<ButtonPress-1>', lambda event: start_sending_rc_control_user(0, 0, 20, 0))
 control_up.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
 
 # Down button
 control_down = ttk.Button(control_frame, text="Down", width=button_width)
 control_down.grid(row=3, column=3, padx=10, pady=10)
-control_down.bind('<ButtonPress-1>', lambda event: start_sending_rc_control(0, 0, -20, 0))
+control_down.bind('<ButtonPress-1>', lambda event: start_sending_rc_control_user(0, 0, -20, 0))
 control_down.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
 
 # Rotate Left button
 control_rotate_left = ttk.Button(control_frame, text="Rotate Left", width=button_width)
 control_rotate_left.grid(row=1, column=0, padx=10, pady=10)
-control_rotate_left.bind('<ButtonPress-1>', lambda event: start_sending_rc_control(0, 0, 0, -30))
+control_rotate_left.bind('<ButtonPress-1>', lambda event: start_sending_rc_control_user(0, 0, 0, -30))
 control_rotate_left.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
 
 # Rotate Right button
 control_rotate_right = ttk.Button(control_frame, text="Rotate Right", width=button_width)
 control_rotate_right.grid(row=1, column=2, padx=10, pady=10)
-control_rotate_right.bind('<ButtonPress-1>', lambda event: start_sending_rc_control(0, 0, 0, 30))
+control_rotate_right.bind('<ButtonPress-1>', lambda event: start_sending_rc_control_user(0, 0, 0, 30))
 control_rotate_right.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
 
 
