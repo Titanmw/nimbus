@@ -17,10 +17,16 @@ face_center = False
 qr_detection = False
 qr_code_center = False
 
-send_control_flag = False
-control_thread = None
-control_lock = threading.Lock()
-control_priority = None  # "user" or "ai"
+#Bojan Lösung
+user_left_right = 0
+user_forward_backward = 0
+user_up_down = 0
+user_yaw = 0
+
+ai_left_right = 0
+ai_forward_backward = 0
+ai_up_down = 0
+ai_yaw = 0
 
 last_command_id = None
 qr_controlled = False
@@ -163,67 +169,50 @@ def calculate_offset_and_size(points, image):
 
     return (offset_x, offset_y), size
 
-# Start sending RC control for user
+def send_RC():
+    global me, user_left_right, user_forward_backward, user_up_down, user_yaw, ai_left_right, ai_forward_backward, ai_up_down, ai_yaw
+
+    left_right = ai_left_right
+    forward_backward = ai_forward_backward
+    up_down = ai_up_down
+    yaw = ai_yaw
+
+    if user_forward_backward != 0 or user_forward_backward != 0 or user_up_down != 0 or user_yaw != 0:
+        left_right = user_left_right
+        forward_backward = user_forward_backward
+        up_down = user_up_down
+        yaw = user_yaw
+    
+    ai_left_right = 0
+    ai_forward_backward = 0
+    ai_up_down = 0
+    yaw = 0
+
+    me.send_rc_control(left_right, forward_backward, up_down, yaw)
+
 def start_sending_rc_control_user(left_right, forward_backward, up_down, yaw):
-    global send_control_flag, control_thread, control_priority
-
-    def send_rc_control_continuously():
-        while True:
-            with control_lock:
-                if not send_control_flag or control_priority != "user":
-                    break
-            me.send_rc_control(left_right, forward_backward, up_down, yaw)
-            time.sleep(0.1)
-        
-        # Send stop command when exiting
-        me.send_rc_control(0, 0, 0, 0)
-
-    with control_lock:
-        # Prioritize user input and stop any other control
-        if control_priority != "user":
-            send_control_flag = False  # Stop any other control (AI)
-            if control_thread is not None and control_thread.is_alive():
-                control_thread.join()
-
-        # Start new user control thread
-        control_priority = "user"
-        send_control_flag = True
-        control_thread = threading.Thread(target=send_rc_control_continuously, daemon=True)
-        control_thread.start()
-
-# Start sending RC control for AI
+    global user_left_right, user_forward_backward, user_up_down, user_yaw
+    
+    user_left_right = left_right
+    user_forward_backward = forward_backward
+    user_up_down = up_down
+    user_yaw = yaw
+    
 def start_sending_rc_control_ai(left_right, forward_backward, up_down, yaw):
-    global send_control_flag, control_thread, control_priority
+    global ai_left_right, ai_forward_backward, ai_up_down, ai_yaw
+    
+    ai_left_right = left_right
+    ai_forward_backward = forward_backward
+    ai_up_down = up_down
+    ai_yaw = yaw
 
-    def send_rc_control_continuously():
-        while True:
-            with control_lock:
-                if not send_control_flag or control_priority != "ai":
-                    break
-            me.send_rc_control(left_right, forward_backward, up_down, yaw)
-            time.sleep(0.1)
-        
-        # Send stop command when exiting
-        me.send_rc_control(0, 0, 0, 0)
-
-    with control_lock:
-        # Check if user control is active; if so, ignore AI control request
-        if control_priority == "user" and send_control_flag:
-            print("AI control ignored due to active user control")
-            return
-
-        # Start new AI control thread if no user control
-        control_priority = "ai"
-        send_control_flag = True
-        control_thread = threading.Thread(target=send_rc_control_continuously, daemon=True)
-        control_thread.start()
-
-# Stop sending RC control
 def stop_sending_rc_control():
-    global send_control_flag
-    print("Stopping RC control")
-    with control_lock:
-        send_control_flag = False
+    global user_left_right, user_forward_backward, user_up_down, user_yaw
+
+    user_left_right = 0
+    user_forward_backward = 0
+    user_up_down = 0
+    user_yaw = 0
 
 def adjust_drone_position(offset, size, desired_size):
     global me, send_control_flag
@@ -395,8 +384,6 @@ def update_drone_image():
                     if qr_code_center and me.is_flying:
                         adjustments_made = True  # Mark adjustments as true if processing QR
                         adjust_drone_position(offset, size, 70)
-            else:
-                stop_sending_rc_control()
 
         if face_detection:
             results = mp_face_detection.process(image)
@@ -424,8 +411,7 @@ def update_drone_image():
                         adjustments_made = True  # Mark adjustments as true if processing QR
                         adjust_drone_position(offset, size, 70)
 
-        if not adjustments_made:
-            start_sending_rc_control_ai(0, 0, 0, 0)
+        send_RC()
 
         im_pil = Image.fromarray(image)
         imgtk = ImageTk.PhotoImage(image=im_pil)
@@ -634,19 +620,19 @@ control_up.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
 control_down = ttk.Button(control_frame, text="Down", width=button_width)
 control_down.grid(row=3, column=3, padx=10, pady=10)
 control_down.bind('<ButtonPress-1>', lambda event: start_sending_rc_control_user(0, 0, -20, 0))
-control_down.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
+# control_down.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
 
 # Rotate Left button
 control_rotate_left = ttk.Button(control_frame, text="Rotate Left", width=button_width)
 control_rotate_left.grid(row=1, column=0, padx=10, pady=10)
 control_rotate_left.bind('<ButtonPress-1>', lambda event: start_sending_rc_control_user(0, 0, 0, -30))
-control_rotate_left.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
+# control_rotate_left.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
 
 # Rotate Right button
 control_rotate_right = ttk.Button(control_frame, text="Rotate Right", width=button_width)
 control_rotate_right.grid(row=1, column=2, padx=10, pady=10)
 control_rotate_right.bind('<ButtonPress-1>', lambda event: start_sending_rc_control_user(0, 0, 0, 30))
-control_rotate_right.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
+# control_rotate_right.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
 
 
 # Flip Frame
