@@ -1,6 +1,5 @@
-import time
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk
 from PIL import ImageTk, Image
 import threading
 import cv2
@@ -172,12 +171,15 @@ def calculate_offset_and_size(points, image):
 def send_RC():
     global me, user_left_right, user_forward_backward, user_up_down, user_yaw, ai_left_right, ai_forward_backward, ai_up_down, ai_yaw
 
+    if not me.is_flying:
+        return
+
     left_right = ai_left_right
     forward_backward = ai_forward_backward
     up_down = ai_up_down
     yaw = ai_yaw
 
-    if user_forward_backward != 0 or user_forward_backward != 0 or user_up_down != 0 or user_yaw != 0:
+    if user_left_right != 0 or user_forward_backward != 0 or user_up_down != 0 or user_yaw != 0:
         left_right = user_left_right
         forward_backward = user_forward_backward
         up_down = user_up_down
@@ -186,7 +188,7 @@ def send_RC():
     ai_left_right = 0
     ai_forward_backward = 0
     ai_up_down = 0
-    yaw = 0
+    ai_yaw = 0
 
     me.send_rc_control(left_right, forward_backward, up_down, yaw)
 
@@ -222,8 +224,8 @@ def adjust_drone_position(offset, size, desired_size):
 
     size_error = size - desired_size
 
-    offset_x_threshold = 80
-    offset_y_threshold = 80
+    offset_x_threshold = 40
+    offset_y_threshold = 40
     size_threshold = 50
 
     left_right = 0
@@ -233,31 +235,31 @@ def adjust_drone_position(offset, size, desired_size):
     if abs(offset[0]) > offset_x_threshold:
         if offset[0] > 0:
             print("Drohne nach rechts bewegen")
-            left_right = -10
+            left_right = 10
             # start_sending_rc_control(20, 0, 0, 0)
         else:
             print("Drohne nach links bewegen")
-            left_right = 10
+            left_right = -10
             # start_sending_rc_control(-20, 0, 0, 0)
 
     if abs(offset[1]) > offset_y_threshold:
         if offset[1] > 0:
             print("Drohne nach unten bewegen")
-            forward_backward = 10
+            up_down = -10
             # start_sending_rc_control(0, 0, -20 , 0)
         else:
             print("Drohne nach oben bewegen")
-            forward_backward = -10
+            up_down = 10
             # start_sending_rc_control(0, 0, 20, 0)
 
     if abs(size_error) > size_threshold:
         if size_error > 0:
             print("Drohne rückwärts bewegen")
-            up_down = 10
+            forward_backward = -10
             # start_sending_rc_control(0, -20, 0, 0)
         else:
             print("Drohne vorwärts bewegen")
-            up_down = -10
+            forward_backward = 10
             # start_sending_rc_control(0, 20, 0, 0)
     
     start_sending_rc_control_ai(left_right, forward_backward, up_down, 0)
@@ -349,67 +351,69 @@ def update_drone_image():
 
         image.flags.writeable = True
 
-        adjustments_made = False  # Track if any adjustment is made
+        if qr_detection and image is not None and image.size != 0:
+            try:
+                decoded_text, points, _ = qr_detector.detectAndDecode(image)
+                
+                if points is not None:
+                    point = points[0]
 
-        if qr_detection:
-            decoded_text, points, _ = qr_detector.detectAndDecode(image)
+                    if decoded_text:
+                        for i in range(len(point)):
+                            pt1 = tuple(map(int, point[i]))
+                            pt2 = tuple(map(int, point[(i + 1) % len(point)]))
+                            cv2.line(image, pt1, pt2, color=(0, 255, 0), thickness=2)
 
-            if points is not None:
-                point = points[0]
+                        text_qr_code.config(state="normal")
+                        text_qr_code.delete("1.0", tk.END)
+                        text_qr_code.insert(tk.END, decoded_text)
+                        text_qr_code.config(state="disabled")
+                        text_qr_code.update()
 
-                if decoded_text:
-                    for i in range(len(point)):
-                        pt1 = tuple(map(int, point[i]))
-                        pt2 = tuple(map(int, point[(i + 1) % len(point)]))
-                        cv2.line(image, pt1, pt2, color=(0, 255, 0), thickness=2)
+                        # Process QR command if the format is COMMAND:<ACTION>
+                        if qr_controlled and decoded_text.startswith("COMMAND:"):
+                            process_qr_command(decoded_text)
 
-                    text_qr_code.config(state="normal")
-                    text_qr_code.delete("1.0", tk.END)
-                    text_qr_code.insert(tk.END, decoded_text)
-                    text_qr_code.config(state="disabled")
-                    text_qr_code.update()
+                        offset, size = calculate_offset_and_size(point, image)
 
-                    # Process QR command if the format is COMMAND:<ACTION>
-                    if qr_controlled and decoded_text.startswith("COMMAND:"):
-                        process_qr_command(decoded_text)
+                        text_offset = f"Offset (x, y): ({offset[0]:.2f}, {offset[1]:.2f})"
+                        text_size = f"Size: {size:.2f} px"
 
-                    offset, size = calculate_offset_and_size(point, image)
+                        cv2.putText(image, text_offset, (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2, cv2.LINE_AA)
+                        cv2.putText(image, text_size, (10, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2, cv2.LINE_AA)
 
-                    text_offset = f"Offset (x, y): ({offset[0]:.2f}, {offset[1]:.2f})"
-                    text_size = f"Size: {size:.2f} px"
+                        if qr_code_center and me.is_flying:
+                            adjust_drone_position(offset, size, 70)
+            except e:
+                print(e)
 
-                    cv2.putText(image, text_offset, (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2, cv2.LINE_AA)
-                    cv2.putText(image, text_size, (10, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2, cv2.LINE_AA)
+        if face_detection and image is not None and image.size != 0:
+            try:
+                results = mp_face_detection.process(image)
+                if results.detections:
+                    for detection in results.detections:
+                        mp_drawing.draw_detection(image, detection)
+                        face_box = detection.location_data.relative_bounding_box
+                        image_height, image_width, _ = image.shape
+                        point = [
+                            (int(face_box.xmin * image_width), int(face_box.ymin * image_height)),
+                            (int((face_box.xmin + face_box.width) * image_width), int(face_box.ymin * image_height)),
+                            (int((face_box.xmin + face_box.width) * image_width), int((face_box.ymin + face_box.height) * image_height)),
+                            (int(face_box.xmin * image_width), int((face_box.ymin + face_box.height) * image_height)),
+                        ]
 
-                    if qr_code_center and me.is_flying:
-                        adjustments_made = True  # Mark adjustments as true if processing QR
-                        adjust_drone_position(offset, size, 70)
+                        offset, size = calculate_offset_and_size(point, image)
 
-        if face_detection:
-            results = mp_face_detection.process(image)
-            if results.detections:
-                for detection in results.detections:
-                    mp_drawing.draw_detection(image, detection)
-                    face_box = detection.location_data.relative_bounding_box
-                    image_height, image_width, _ = image.shape
-                    point = [
-                        (int(face_box.xmin * image_width), int(face_box.ymin * image_height)),
-                        (int((face_box.xmin + face_box.width) * image_width), int(face_box.ymin * image_height)),
-                        (int((face_box.xmin + face_box.width) * image_width), int((face_box.ymin + face_box.height) * image_height)),
-                        (int(face_box.xmin * image_width), int((face_box.ymin + face_box.height) * image_height)),
-                    ]
+                        text_offset = f"Offset (x, y): ({offset[0]:.2f}, {offset[1]:.2f})"
+                        text_size = f"Size: {size:.2f} px"
 
-                    offset, size = calculate_offset_and_size(point, image)
+                        cv2.putText(image, text_offset, (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2, cv2.LINE_AA)
+                        cv2.putText(image, text_size, (10, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2, cv2.LINE_AA)
 
-                    text_offset = f"Offset (x, y): ({offset[0]:.2f}, {offset[1]:.2f})"
-                    text_size = f"Size: {size:.2f} px"
-
-                    cv2.putText(image, text_offset, (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2, cv2.LINE_AA)
-                    cv2.putText(image, text_size, (10, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2, cv2.LINE_AA)
-
-                    if face_center and me.is_flying:
-                        adjustments_made = True  # Mark adjustments as true if processing QR
-                        adjust_drone_position(offset, size, 70)
+                        if face_center and me.is_flying:
+                            adjust_drone_position(offset, size, 70)
+            except e:
+                print(e)
 
         send_RC()
 
@@ -620,19 +624,19 @@ control_up.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
 control_down = ttk.Button(control_frame, text="Down", width=button_width)
 control_down.grid(row=3, column=3, padx=10, pady=10)
 control_down.bind('<ButtonPress-1>', lambda event: start_sending_rc_control_user(0, 0, -20, 0))
-# control_down.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
+control_down.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
 
 # Rotate Left button
 control_rotate_left = ttk.Button(control_frame, text="Rotate Left", width=button_width)
 control_rotate_left.grid(row=1, column=0, padx=10, pady=10)
 control_rotate_left.bind('<ButtonPress-1>', lambda event: start_sending_rc_control_user(0, 0, 0, -30))
-# control_rotate_left.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
+control_rotate_left.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
 
 # Rotate Right button
 control_rotate_right = ttk.Button(control_frame, text="Rotate Right", width=button_width)
 control_rotate_right.grid(row=1, column=2, padx=10, pady=10)
 control_rotate_right.bind('<ButtonPress-1>', lambda event: start_sending_rc_control_user(0, 0, 0, 30))
-# control_rotate_right.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
+control_rotate_right.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
 
 
 # Flip Frame
