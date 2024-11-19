@@ -339,17 +339,16 @@ def update_drone_image():
             disconnect_to_drone()
             break
 
-        drone_battery.configure(text=f'{battery_text}%')
-        drone_frame.update()
-        drone_height.configure(text=f'{me.get_height()} cm')
-        drone_height.update()
-
         image = me.get_frame_read().frame
         if image is None:
             print("Kein Bild vom Video-Stream empfangen.")
             continue
 
         image.flags.writeable = True
+        height, width, _ = image.shape
+        cv2.putText(image, f"Resolution: {width}x{height}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 1, cv2.LINE_AA)
+        cv2.putText(image, f"Battery: {battery_text} %", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 1, cv2.LINE_AA)
+        cv2.putText(image, f"Height: {me.get_height()} cm", (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 1, cv2.LINE_AA)
 
         if qr_detection and image is not None and image.size != 0:
             try:
@@ -431,7 +430,6 @@ def show_default_image():
     imgtk = ImageTk.PhotoImage(image=default_img)
     image_capture.config(image=imgtk)
     image_capture.image = imgtk
-    drone_battery.configure(text='-')
     drone_status.update()
 
 def button_face_detection_toggle():
@@ -522,73 +520,61 @@ drone_status.grid(row=0, column=1, padx=10, pady=10)
 drone_connect_button = ttk.Button(drone_frame, text="Connect", command=button_connect_drone)
 drone_connect_button.grid(row=0, column=2, padx=10, pady=10)
 
-drone_battery_label = ttk.Label(drone_frame, text="Battery")
-drone_battery_label.grid(row=1, column=0)
-
-drone_battery = ttk.Label(drone_frame, text="-")
-drone_battery.grid(row=1, column=1, padx=10, pady=10)
-
-drone_height_label = ttk.Label(drone_frame, text="Height")
-drone_height_label.grid(row=2, column=0)
-
-drone_height = ttk.Label(drone_frame, text="-")
-drone_height.grid(row=2, column=1, padx=10, pady=10)
-
 drone_face_detect_label = ttk.Label(drone_frame, text="Face Detection")
-drone_face_detect_label.grid(row=3, column=0)
+drone_face_detect_label.grid(row=1, column=0)
 
 drone_face_detect = ttk.Label(drone_frame, text="OFF")
-drone_face_detect.grid(row=3, column=1, padx=10, pady=10)
+drone_face_detect.grid(row=1, column=1, padx=10, pady=10)
 
 drone_face_detect_button = ttk.Button(drone_frame, text="Toggle", command=button_face_detection_toggle)
-drone_face_detect_button.grid(row=3, column=2, padx=10, pady=10)
+drone_face_detect_button.grid(row=1, column=2, padx=10, pady=10)
 
 drone_face_center_label = ttk.Label(drone_frame, text="Center Face")
-drone_face_center_label.grid(row=4, column=0)
+drone_face_center_label.grid(row=2, column=0)
 
 drone_face_center = ttk.Label(drone_frame, text="OFF")
-drone_face_center.grid(row=4, column=1, padx=10, pady=10)
+drone_face_center.grid(row=2, column=1, padx=10, pady=10)
 
 drone_face_button = ttk.Button(drone_frame, text="Toggle", command=button_face_center_toggle)
-drone_face_button.grid(row=4, column=2, padx=10, pady=10)
+drone_face_button.grid(row=2, column=2, padx=10, pady=10)
 
 drone_qr_detect_label = ttk.Label(drone_frame, text="QR-Code Detection")
-drone_qr_detect_label.grid(row=5, column=0)
+drone_qr_detect_label.grid(row=3, column=0)
 
 drone_qr_detect = ttk.Label(drone_frame, text="OFF")
-drone_qr_detect.grid(row=5, column=1, padx=10, pady=10)
+drone_qr_detect.grid(row=3, column=1, padx=10, pady=10)
 
 drone_qr_detect_button = ttk.Button(drone_frame, text="Toggle", command=button_qr_detect_toggle)
-drone_qr_detect_button.grid(row=5, column=2, padx=10, pady=10)
+drone_qr_detect_button.grid(row=3, column=2, padx=10, pady=10)
 
 drone_qr_center_label = ttk.Label(drone_frame, text="Center QR-Code")
-drone_qr_center_label.grid(row=6, column=0)
+drone_qr_center_label.grid(row=4, column=0)
 
 drone_qr_center = ttk.Label(drone_frame, text="OFF")
-drone_qr_center.grid(row=6, column=1, padx=10, pady=10)
+drone_qr_center.grid(row=4, column=1, padx=10, pady=10)
 
 drone_qr_center_button = ttk.Button(drone_frame, text="Toggle", command=button_qr_center_toggle)
-drone_qr_center_button.grid(row=6, column=2, padx=10, pady=10)
+drone_qr_center_button.grid(row=4, column=2, padx=10, pady=10)
 
 drone_qr_controlled_label = ttk.Label(drone_frame, text="QR-Code conrolled")
-drone_qr_controlled_label.grid(row=7, column=0)
+drone_qr_controlled_label.grid(row=5, column=0)
 
 drone_qr_controlled = ttk.Label(drone_frame, text="OFF")
-drone_qr_controlled.grid(row=7, column=1, padx=10, pady=10)
+drone_qr_controlled.grid(row=5, column=1, padx=10, pady=10)
 
 drone_qr_controlled_button = ttk.Button(drone_frame, text="Toggle", command=button_qr_controlled_toggle)
-drone_qr_controlled_button.grid(row=7, column=2, padx=10, pady=10)
+drone_qr_controlled_button.grid(row=5, column=2, padx=10, pady=10)
 
 drone_takeoff_button = ttk.Button(drone_frame, text="Take off", width=button_width,
                                   command=lambda: threading.Thread(target=me.takeoff, daemon=True).start())
-drone_takeoff_button.grid(row=8, column=0, padx=10, pady=10)
+drone_takeoff_button.grid(row=6, column=0, padx=10, pady=10)
 
 drone_land_button = ttk.Button(drone_frame, text="Land", width=button_width,
                                command=lambda: threading.Thread(target=me.land, daemon=True).start())
-drone_land_button.grid(row=8, column=1, padx=10, pady=10)
+drone_land_button.grid(row=6, column=1, padx=10, pady=10)
 
 control_frame = tk.LabelFrame(drone_frame, text="Controls", background=main_bg_color, fg="white")
-control_frame.grid(row=9, column=0, columnspan=2, padx=10, pady=10)
+control_frame.grid(row=7, column=0, columnspan=2, padx=10, pady=10)
 
 # Forward button
 control_forward = ttk.Button(control_frame, text="Forward", width=button_width)
@@ -641,7 +627,7 @@ control_rotate_right.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_con
 
 # Flip Frame
 flip_frame = tk.LabelFrame(drone_frame, text="Flip", background=main_bg_color, fg="white")
-flip_frame.grid(row=9, column=2, padx=10, pady=10)
+flip_frame.grid(row=7, column=2, padx=10, pady=10)
 
 flip_forward = ttk.Button(flip_frame, text="Forward", width=button_width,
                           command=lambda: threading.Thread(target=me.flip_forward, daemon=True).start())
@@ -672,7 +658,7 @@ text_qr_code.config(state="disabled")
 error_frame = tk.LabelFrame(drone_frame, text="Error Log", background=main_bg_color, fg="white")
 error_frame.grid(row=10, column=2, columnspan=2, sticky="ew", padx=10, pady=10)
 
-error_log = tk.Text(error_frame, height=5, width=50, background=main_bg_color, fg="red")
+error_log = tk.Text(error_frame, height=5, width=40, background=main_bg_color, fg="red")
 error_log.grid(row=0, column=0, padx=10, pady=10)
 error_log.config(state="disabled")
 
