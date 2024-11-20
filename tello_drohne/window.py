@@ -29,28 +29,29 @@ ai_yaw = 0
 
 last_command_id = None
 qr_controlled = False
-main_bg_color = '#2E2E2E'
 
-def create_darkmode_styles():
+main_bg_color = '#F0F0F0'  # Light background color
+
+def create_lightmode_styles():
     style = ttk.Style()
     style.theme_use('clam')  # Verwende ein modernes Theme
 
-    # Definiere die Hintergrundfarbe, die du für die "Transparenz" simulieren willst
-    parent_bg_color = '#2E2E2E'  # Gleiche Hintergrundfarbe wie das übergeordnete Widget (z.B. Frame)
+    # Definiere die Hintergrundfarbe für das Light Theme
+    parent_bg_color = '#F0F0F0'  # Helle Hintergrundfarbe
 
-    # Farben und Schriftarten für Buttons und Labels im Darkmode
+    # Farben und Schriftarten für Buttons (bleiben dunkel)
     style.configure('TButton', font=('Helvetica', 12, 'bold'), background='#333333', foreground='#00BFFF', padding=10)
     style.map('TButton', background=[('active', '#444444')], foreground=[('active', '#00BFFF')])
 
-    # Labels und LabelFrame Schriftfarbe auf Weiß (#FFFFFF) ändern und Hintergrund an das übergeordnete Widget anpassen
-    style.configure('TLabel', font=('Helvetica', 12), background=parent_bg_color, foreground='#FFFFFF', padding=5)
+    # Labels und LabelFrame Schriftfarbe auf Dunkel (#000000) ändern und Hintergrund hell
+    style.configure('TLabel', font=('Helvetica', 12), background=parent_bg_color, foreground='#000000', padding=5)
     style.configure('TFrame', background=parent_bg_color)
 
-    # Der LabelFrame hat den gleichen Hintergrund wie das übergeordnete Widget für den transparenten Effekt
-    style.configure('TLabelFrame', background=parent_bg_color, foreground='#FFFFFF', font=('Helvetica', 14, 'bold'))
+    # Der LabelFrame hat den gleichen Hintergrund wie das übergeordnete Widget für den hellen Effekt
+    style.configure('TLabelFrame', background=parent_bg_color, foreground='#000000', font=('Helvetica', 14, 'bold'))
 
     # Textfelder ebenfalls anpassen
-    style.configure('TText', background='#1E1E1E', foreground='#00BFFF')
+    style.configure('TText', background='#FFFFFF', foreground='#000000')
 
 def show_error(message):
     error_log.config(state="normal")  # Aktiviere das Textfeld, um Text hinzuzufügen
@@ -500,7 +501,7 @@ window.title("Tello Drone Controller")
 frame = ttk.Frame(window)
 frame.pack(fill="both", expand=True)
 
-create_darkmode_styles()
+create_lightmode_styles()
 
 mp_face_detection = mp.solutions.face_detection
 mp_drawing = mp.solutions.drawing_utils
@@ -508,7 +509,7 @@ mp_face_detection = mp_face_detection.FaceDetection(model_selection=0, min_detec
 
 
 # Drone Frame
-drone_frame = tk.LabelFrame(frame, text="Drone", background=main_bg_color, fg="white")
+drone_frame = tk.LabelFrame(frame, text="Drone", background=main_bg_color)
 drone_frame.grid(row=0, column=0, sticky="news", padx=10, pady=10)
 
 drone_status_label = ttk.Label(drone_frame, text="Status")
@@ -573,7 +574,7 @@ drone_land_button = ttk.Button(drone_frame, text="Land", width=button_width,
                                command=lambda: threading.Thread(target=me.land, daemon=True).start())
 drone_land_button.grid(row=6, column=1, padx=10, pady=10)
 
-control_frame = tk.LabelFrame(drone_frame, text="Controls", background=main_bg_color, fg="white")
+control_frame = tk.LabelFrame(drone_frame, text="Controls", background=main_bg_color)
 control_frame.grid(row=7, column=0, columnspan=2, padx=10, pady=10)
 
 # Forward button
@@ -601,13 +602,13 @@ control_back.bind('<ButtonPress-1>', lambda event: start_sending_rc_control_user
 control_back.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
 
 # Up button
-control_up = ttk.Button(control_frame, text="Up", width=button_width)
+control_up = ttk.Button(control_frame, text="Up", width=4)
 control_up.grid(row=1, column=3, padx=10, pady=10)
 control_up.bind('<ButtonPress-1>', lambda event: start_sending_rc_control_user(0, 0, 20, 0))
 control_up.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
 
 # Down button
-control_down = ttk.Button(control_frame, text="Down", width=button_width)
+control_down = ttk.Button(control_frame, text="Down", width=4)
 control_down.grid(row=3, column=3, padx=10, pady=10)
 control_down.bind('<ButtonPress-1>', lambda event: start_sending_rc_control_user(0, 0, -20, 0))
 control_down.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
@@ -626,7 +627,7 @@ control_rotate_right.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_con
 
 
 # Flip Frame
-flip_frame = tk.LabelFrame(drone_frame, text="Flip", background=main_bg_color, fg="white")
+flip_frame = tk.LabelFrame(drone_frame, text="Flip", background=main_bg_color)
 flip_frame.grid(row=7, column=2, padx=10, pady=10)
 
 flip_forward = ttk.Button(flip_frame, text="Forward", width=button_width,
@@ -650,12 +651,12 @@ flip_backward.grid(row=3, column=1, padx=10, pady=10)
 qr_label = ttk.Label(drone_frame, text="QR Code Value")
 qr_label.grid(row=10, column=0, padx=10, pady=10)
 
-text_qr_code = tk.Text(drone_frame, height=5, width=30, background=main_bg_color, fg="white")
+text_qr_code = tk.Text(drone_frame, height=5, width=30, background=main_bg_color)
 text_qr_code.grid(row=10, column=1, sticky="ew", padx=10, pady=10)
 text_qr_code.config(state="disabled")
 
 # Error Frame
-error_frame = tk.LabelFrame(drone_frame, text="Error Log", background=main_bg_color, fg="white")
+error_frame = tk.LabelFrame(drone_frame, text="Error Log", background=main_bg_color)
 error_frame.grid(row=10, column=2, columnspan=2, sticky="ew", padx=10, pady=10)
 
 error_log = tk.Text(error_frame, height=5, width=40, background=main_bg_color, fg="red")
@@ -663,7 +664,7 @@ error_log.grid(row=0, column=0, padx=10, pady=10)
 error_log.config(state="disabled")
 
 # Bild Frame
-image_frame = tk.LabelFrame(frame, text="Image", background=main_bg_color, fg="white")
+image_frame = tk.LabelFrame(frame, text="Image", background=main_bg_color)
 image_frame.grid(row=0, column=1, sticky="news", padx=10, pady=10)
 
 image_capture = ttk.Label(image_frame, text="Capture")
