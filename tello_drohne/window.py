@@ -9,12 +9,15 @@ import numpy as np
 
 button_width = 8
 # button_height = 4
+style = None
 
 connected = False
 face_detection = False
 face_center = False
 qr_detection = False
 qr_code_center = False
+
+is_proceeding_task = False
 
 #Bojan Lösung
 user_left_right = 0
@@ -32,8 +35,10 @@ qr_controlled = False
 
 main_bg_color = '#F0F0F0'  # Light background color
 
-def create_lightmode_styles():
-    style = ttk.Style()
+def create_lightmode_styles(frame):
+    global style
+
+    style = ttk.Style(frame)
     style.theme_use('clam')  # Verwende ein modernes Theme
 
     # Definiere die Hintergrundfarbe für das Light Theme
@@ -52,6 +57,12 @@ def create_lightmode_styles():
 
     # Textfelder ebenfalls anpassen
     style.configure('TText', background='#FFFFFF', foreground='#000000')
+
+    style.configure("ON.TButton", background="green", foreground="white")
+    style.map("ON.TButton", background=[("active", "darkgreen")])
+
+    style.configure("OFF.TButton", background="red", foreground="white")
+    style.map("OFF.TButton", background=[("active", "darkred")])
 
 def show_error(message):
     error_log.config(state="normal")  # Aktiviere das Textfeld, um Text hinzuzufügen
@@ -93,8 +104,8 @@ def connect_to_drone():
     global me
 
     print('Connecting to drone...')
-    drone_status.configure(text='connecting')
-    drone_status.update()
+    drone_connect_button.config(text='Connecting')
+    drone_connect_button.update()
 
     try:
         me.connect(wait_for_state=True)
@@ -105,14 +116,11 @@ def connect_to_drone():
         drone_connect_button.update()
         battery_level = me.get_battery()
         print(f"Verbindung hergestellt! Batteriestand: {battery_level}%")
-        drone_status.configure(text='connected')
-        drone_status.update()
 
         threading.Thread(target=update_drone_image, daemon=True).start()
 
     except Exception as e:
         print(f"Fehler bei der Verbindung: {e}")
-        drone_status.configure(text='offline')
         connected = False
         drone_connect_button.config(text='Connect')
         drone_connect_button.update()
@@ -140,8 +148,6 @@ def disconnect_to_drone():
         me = None
         me = tello.Tello()
         show_default_image()
-        drone_status.configure(text='offline')
-        drone_status.update()
 
 def calculate_offset_and_size(points, image):
     if points is None or len(points) < 4:
@@ -179,6 +185,12 @@ def send_RC():
     forward_backward = ai_forward_backward
     up_down = ai_up_down
     yaw = ai_yaw
+
+    if is_proceeding_task:
+        left_right = 0
+        forward_backward = 0
+        up_down = 0
+        yaw = 0
 
     if user_left_right != 0 or user_forward_backward != 0 or user_up_down != 0 or user_yaw != 0:
         left_right = user_left_right
@@ -266,66 +278,86 @@ def adjust_drone_position(offset, size, desired_size):
     start_sending_rc_control_ai(left_right, forward_backward, up_down, 0)
 
 def process_qr_command(decoded_text):
-    global me, last_command_id
+    global me, last_command_id, is_proceeding_task
 
-    # QR-Code wird in drei Teile gesplittet: COMMAND:<ACTION>:<ID>
-    parts = decoded_text.split(":")
+    # QR-Code wird in mehrere Zeilen gesplittet
+    lines = decoded_text.strip().split("\n")
 
-    # Prüfen, ob der QR-Code das richtige Format für einen Command hat
-    if len(parts) == 3 and parts[0].upper() == "COMMAND":
-        action = f"{parts[0].upper()}:{parts[1].upper()}"
-        command_id = parts[2]
+    # Extrahiere die Programm-ID aus der ersten Zeile
+    if len(lines) < 2:
+        print("Ungültiges Format: Es muss eine Programm-ID und mindestens ein Befehl vorhanden sein.")
+        return
 
-        # Überprüfen, ob der Befehl bereits ausgeführt wurde
-        if command_id == last_command_id:
-            print(f"Befehl {command_id} wurde bereits ausgeführt, wird ignoriert.")
-            return
+    program_id = lines[0]
+    print(f"Programm-ID: {program_id}")
+
+    # Überprüfen, ob das Programm bereits ausgeführt wurde
+    if program_id == last_command_id:
+        print(f"Programm {program_id} wurde bereits ausgeführt, wird ignoriert.")
+        return
+    else:
+        print(f"Verarbeite neues Programm: {program_id}")
+        last_command_id = program_id  # Speichern der aktuellen Programm-ID
+
+    is_proceeding_task = True
+
+    # Verarbeite jeden Befehl in den folgenden Zeilen
+    for line in lines[1:]:
+        # Einzelnen Befehl verarbeiten
+        parts = line.split(":")
+        if len(parts) >= 2:
+            action = f"COMMAND:{parts[0].upper()}"
+            args = parts[1:]  # Zusätzliche Argumente ab der 2. Stelle
+
+            # Drohnenbefehle basierend auf dem Command
+            try:
+                if action == "COMMAND:LAND":
+                    print("Befehl: Landen")
+                    threading.Thread(target=me.land, daemon=True).start()
+                elif action == "COMMAND:FORWARD":
+                    print(f"Befehl: Vorwärts, Argumente: {args}")
+                    threading.Thread(target=me.move_forward, daemon=True, args=[int(args[0])]).start()
+                elif action == "COMMAND:LEFT":
+                    print(f"Befehl: Links, Argumente: {args}")
+                    threading.Thread(target=me.move_left, daemon=True, args=[int(args[0])]).start()
+                elif action == "COMMAND:RIGHT":
+                    print(f"Befehl: Rechts, Argumente: {args}")
+                    threading.Thread(target=me.move_right, daemon=True, args=[int(args[0])]).start()
+                elif action == "COMMAND:BACKWARD":
+                    print(f"Befehl: Rückwärts, Argumente: {args}")
+                    threading.Thread(target=me.move_back, daemon=True, args=[int(args[0])]).start()
+                elif action == "COMMAND:FLIP FORWARD":
+                    print("Befehl: Flip Vorwärts")
+                    threading.Thread(target=me.flip_forward, daemon=True).start()
+                elif action == "COMMAND:FLIP LEFT":
+                    print("Befehl: Flip Links")
+                    threading.Thread(target=me.flip_left, daemon=True).start()
+                elif action == "COMMAND:FLIP RIGHT":
+                    print("Befehl: Flip Rechts")
+                    threading.Thread(target=me.flip_right, daemon=True).start()
+                elif action == "COMMAND:FLIP BACKWARD":
+                    print("Befehl: Flip Rückwärts")
+                    threading.Thread(target=me.flip_back, daemon=True).start()
+                elif action == "COMMAND:UP":
+                    print(f"Befehl: Hoch, Argumente: {args}")
+                    threading.Thread(target=me.move_up, daemon=True, args=[int(args[0])]).start()
+                elif action == "COMMAND:DOWN":
+                    print(f"Befehl: Runter, Argumente: {args}")
+                    threading.Thread(target=me.move_down, daemon=True, args=[int(args[0])]).start()
+                elif action == "COMMAND:ROTATE LEFT":
+                    print(f"Befehl: Links Drehen, Argumente: {args}")
+                    threading.Thread(target=me.rotate_counter_clockwise, daemon=True, args=[int(args[0])]).start()
+                elif action == "COMMAND:ROTATE RIGHT":
+                    print(f"Befehl: Rechts Drehen, Argumente: {args}")
+                    threading.Thread(target=me.rotate_clockwise, daemon=True, args=[int(args[0])]).start()
+                else:
+                    print(f"Unbekannter Befehl: {action}")
+            except (IndexError, ValueError) as e:
+                print(f"Fehler beim Verarbeiten des Befehls: {line}. Fehler: {e}")
         else:
-            print(f"Verarbeite neuen Befehl: {command_id}")
-            last_command_id = command_id  # Speichern der aktuellen Command-ID
+            print(f"Ungültiger Befehl: {line}")
 
-        # Drohnenbefehle basierend auf dem Command
-        if action == "COMMAND:LAND":
-            print("Befehl: Landen")
-            threading.Thread(target=me.land, daemon=True).start()
-        elif action == "COMMAND:FORWARD":
-            print("Befehl: Vorwärts")
-            threading.Thread(target=me.move_forward, daemon=True, args=[20]).start()
-        elif action == "COMMAND:LEFT":
-            print("Befehl: Links")
-            threading.Thread(target=me.move_left, daemon=True, args=[20]).start()
-        elif action == "COMMAND:RIGHT":
-            print("Befehl: Rechts")
-            threading.Thread(target=me.move_right, daemon=True, args=[20]).start()
-        elif action == "COMMAND:BACKWARD":
-            print("Befehl: Rückwärts")
-            threading.Thread(target=me.move_back, daemon=True, args=[20]).start()
-        elif action == "COMMAND:FLIP FORWARD":
-            print("Befehl: Vorwärts")
-            threading.Thread(target=me.flip_forward, daemon=True).start()
-        elif action == "COMMAND:FLIP LEFT":
-            print("Befehl: Links")
-            threading.Thread(target=me.flip_left, daemon=True).start()
-        elif action == "COMMAND:FLIP RIGHT":
-            print("Befehl: Rechts")
-            threading.Thread(target=me.flip_right, daemon=True).start()
-        elif action == "COMMAND:FLIP BACKWARD":
-            print("Befehl: Rückwärts")
-            threading.Thread(target=me.flip_back, daemon=True).start()
-        elif action == "COMMAND:UP":
-            print("Befehl: Hoch")
-            threading.Thread(target=me.move_up, daemon=True, args=[20]).start()
-        elif action == "COMMAND:DOWN":
-            print("Befehl: Runter")
-            threading.Thread(target=me.move_down, daemon=True, args=[20]).start()
-        elif action == "COMMAND:ROTATE LEFT":
-            print("Befehl: Links Drehen")
-            threading.Thread(target=me.rotate_counter_clockwise, daemon=True, args=[30]).start()
-        elif action == "COMMAND:ROTATE RIGHT":
-            print("Befehl: Rechts Drehen")
-            threading.Thread(target=me.rotate_clockwise, daemon=True, args=[30]).start()
-        else:
-            print(f"Unbekannter Befehl: {action}")
+    is_proceeding_task = False
 
 def update_drone_image():
     global connected
@@ -333,9 +365,10 @@ def update_drone_image():
 
     while connected:
         check_drone_status()
-        battery_text = "-"
+        
+        battery_text = "Battery: - "
         try:
-            battery_text = me.get_battery()
+            battery_text = f"Battery: {me.get_battery()} %"
         except Exception as e:
             disconnect_to_drone()
             break
@@ -348,7 +381,7 @@ def update_drone_image():
         image.flags.writeable = True
         height, width, _ = image.shape
         cv2.putText(image, f"Resolution: {width}x{height}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 1, cv2.LINE_AA)
-        cv2.putText(image, f"Battery: {battery_text} %", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 1, cv2.LINE_AA)
+        cv2.putText(image, battery_text, (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 1, cv2.LINE_AA)
         cv2.putText(image, f"Height: {me.get_height()} cm", (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 1, cv2.LINE_AA)
 
         if qr_detection and image is not None and image.size != 0:
@@ -431,68 +464,71 @@ def show_default_image():
     imgtk = ImageTk.PhotoImage(image=default_img)
     image_capture.config(image=imgtk)
     image_capture.image = imgtk
-    drone_status.update()
 
 def button_face_detection_toggle():
-    global face_detection
+    global face_detection, drone_face_detect_button
+
     if face_detection:
         face_detection = False
-        drone_face_detect.configure(text='OFF')
+        drone_face_detect_button.configure(text='OFF', style="OFF.TButton")
     else:
         face_detection = True
-        drone_face_detect.configure(text='ON')
+        drone_face_detect_button.configure(text='ON', style="ON.TButton")
 
-    drone_face_detect.update()
+    drone_face_detect_button.update()
 
 def button_face_center_toggle():
-    global face_center
+    global face_center, drone_face_button
+
     if face_center:
         face_center = False
-        drone_face_center.configure(text='OFF')
+        drone_face_button.configure(text='OFF', style="OFF.TButton")
     else:
         face_center = True
-        drone_face_center.configure(text='ON')
+        drone_face_button.configure(text='ON', style="ON.TButton")
 
-    drone_face_center.update()
+    drone_face_button.update()
 
 def button_qr_detect_toggle():
-    global qr_detection
+    global qr_detection, drone_qr_detect_button
+
     if qr_detection:
         qr_detection = False
-        drone_qr_detect.configure(text='OFF')
-        text_qr_code.config(state="normal")
-        text_qr_code.delete("1.0", tk.END)
-        text_qr_code.config(state="disabled")
-        text_qr_code.update()
+        drone_qr_detect_button.configure(text='OFF', style="OFF.TButton")
+        # text_qr_code.config(state="normal")
+        # text_qr_code.delete("1.0", tk.END)
+        # text_qr_code.config(state="disabled")
+        # text_qr_code.update()
     else:
         qr_detection = True
-        drone_qr_detect.configure(text='ON')
+        drone_qr_detect_button.configure(text='ON', style="ON.TButton")
 
-    drone_qr_detect.update()
+    drone_qr_detect_button.update()
 
 def button_qr_center_toggle():
-    global qr_code_center
+    global qr_code_center, drone_qr_center_button
+
     if qr_code_center:
         qr_code_center = False
-        drone_qr_center.configure(text='OFF')
+        drone_qr_center_button.configure(text='OFF', style="OFF.TButton")
     else:
         qr_code_center = True
-        drone_qr_center.configure(text='ON')
+        drone_qr_center_button.configure(text='ON', style="ON.TButton")
 
-    drone_qr_center.update()
+    drone_qr_center_button.update()
 
 def button_qr_controlled_toggle():
-    global qr_controlled
+    global qr_controlled, drone_qr_controlled_button
 
     if qr_controlled:
         qr_controlled = False
         last_command_id = None
-        drone_qr_controlled.configure(text='OFF')
+        drone_qr_controlled_button.configure(text='OFF', style="OFF.TButton")
     else:
         qr_controlled = True
-        drone_qr_controlled.configure(text='ON')
+        drone_qr_controlled_button.configure(text='ON', style="ON.TButton")
 
-    drone_qr_controlled.update()
+    drone_qr_controlled_button.update()
 
 me = tello.Tello()
 
@@ -501,7 +537,7 @@ window.title("Tello Drone Controller")
 frame = ttk.Frame(window)
 frame.pack(fill="both", expand=True)
 
-create_lightmode_styles()
+create_lightmode_styles(frame)
 
 mp_face_detection = mp.solutions.face_detection
 mp_drawing = mp.solutions.drawing_utils
@@ -515,67 +551,47 @@ drone_frame.grid(row=0, column=0, sticky="news", padx=10, pady=10)
 drone_status_label = ttk.Label(drone_frame, text="Status")
 drone_status_label.grid(row=0, column=0)
 
-drone_status = ttk.Label(drone_frame, text="offline")
-drone_status.grid(row=0, column=1, padx=10, pady=10)
-
 drone_connect_button = ttk.Button(drone_frame, text="Connect", command=button_connect_drone)
-drone_connect_button.grid(row=0, column=2, padx=10, pady=10)
+drone_connect_button.grid(row=0, column=1, padx=10, pady=10)
 
 drone_face_detect_label = ttk.Label(drone_frame, text="Face Detection")
 drone_face_detect_label.grid(row=1, column=0)
 
-drone_face_detect = ttk.Label(drone_frame, text="OFF")
-drone_face_detect.grid(row=1, column=1, padx=10, pady=10)
-
-drone_face_detect_button = ttk.Button(drone_frame, text="Toggle", command=button_face_detection_toggle)
-drone_face_detect_button.grid(row=1, column=2, padx=10, pady=10)
+drone_face_detect_button = ttk.Button(drone_frame, text="OFF", style="OFF.TButton", command=button_face_detection_toggle)
+drone_face_detect_button.grid(row=1, column=1, padx=10, pady=10)
 
 drone_face_center_label = ttk.Label(drone_frame, text="Center Face")
 drone_face_center_label.grid(row=2, column=0)
 
-drone_face_center = ttk.Label(drone_frame, text="OFF")
-drone_face_center.grid(row=2, column=1, padx=10, pady=10)
-
-drone_face_button = ttk.Button(drone_frame, text="Toggle", command=button_face_center_toggle)
-drone_face_button.grid(row=2, column=2, padx=10, pady=10)
+drone_face_button = ttk.Button(drone_frame, text="OFF", style="OFF.TButton", command=button_face_center_toggle)
+drone_face_button.grid(row=2, column=1, padx=10, pady=10)
 
 drone_qr_detect_label = ttk.Label(drone_frame, text="QR-Code Detection")
 drone_qr_detect_label.grid(row=3, column=0)
 
-drone_qr_detect = ttk.Label(drone_frame, text="OFF")
-drone_qr_detect.grid(row=3, column=1, padx=10, pady=10)
-
-drone_qr_detect_button = ttk.Button(drone_frame, text="Toggle", command=button_qr_detect_toggle)
-drone_qr_detect_button.grid(row=3, column=2, padx=10, pady=10)
+drone_qr_detect_button = ttk.Button(drone_frame, text="OFF", style="OFF.TButton", command=button_qr_detect_toggle)
+drone_qr_detect_button.grid(row=3, column=1, padx=10, pady=10)
 
 drone_qr_center_label = ttk.Label(drone_frame, text="Center QR-Code")
 drone_qr_center_label.grid(row=4, column=0)
 
-drone_qr_center = ttk.Label(drone_frame, text="OFF")
-drone_qr_center.grid(row=4, column=1, padx=10, pady=10)
-
-drone_qr_center_button = ttk.Button(drone_frame, text="Toggle", command=button_qr_center_toggle)
-drone_qr_center_button.grid(row=4, column=2, padx=10, pady=10)
+drone_qr_center_button = ttk.Button(drone_frame, text="OFF", style="OFF.TButton", command=button_qr_center_toggle)
+drone_qr_center_button.grid(row=4, column=1, padx=10, pady=10)
 
 drone_qr_controlled_label = ttk.Label(drone_frame, text="QR-Code conrolled")
 drone_qr_controlled_label.grid(row=5, column=0)
 
-drone_qr_controlled = ttk.Label(drone_frame, text="OFF")
-drone_qr_controlled.grid(row=5, column=1, padx=10, pady=10)
+drone_qr_controlled_button = ttk.Button(drone_frame, text="OFF", style="OFF.TButton", command=button_qr_controlled_toggle)
+drone_qr_controlled_button.grid(row=5, column=1, padx=10, pady=10)
 
-drone_qr_controlled_button = ttk.Button(drone_frame, text="Toggle", command=button_qr_controlled_toggle)
-drone_qr_controlled_button.grid(row=5, column=2, padx=10, pady=10)
-
-drone_takeoff_button = ttk.Button(drone_frame, text="Take off", width=button_width,
-                                  command=lambda: threading.Thread(target=me.takeoff, daemon=True).start())
+drone_takeoff_button = ttk.Button(drone_frame, text="Take off", command=lambda: threading.Thread(target=me.takeoff, daemon=True).start())
 drone_takeoff_button.grid(row=6, column=0, padx=10, pady=10)
 
-drone_land_button = ttk.Button(drone_frame, text="Land", width=button_width,
-                               command=lambda: threading.Thread(target=me.land, daemon=True).start())
+drone_land_button = ttk.Button(drone_frame, text="Land", command=lambda: threading.Thread(target=me.land, daemon=True).start())
 drone_land_button.grid(row=6, column=1, padx=10, pady=10)
 
 control_frame = tk.LabelFrame(drone_frame, text="Controls", background=main_bg_color)
-control_frame.grid(row=7, column=0, columnspan=2, padx=10, pady=10)
+control_frame.grid(row=7, column=0, padx=10, pady=10)
 
 # Forward button
 control_forward = ttk.Button(control_frame, text="Forward", width=button_width)
@@ -602,13 +618,13 @@ control_back.bind('<ButtonPress-1>', lambda event: start_sending_rc_control_user
 control_back.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
 
 # Up button
-control_up = ttk.Button(control_frame, text="Up", width=4)
+control_up = ttk.Button(control_frame, text="Up", width=6)
 control_up.grid(row=1, column=3, padx=10, pady=10)
 control_up.bind('<ButtonPress-1>', lambda event: start_sending_rc_control_user(0, 0, 20, 0))
 control_up.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
 
 # Down button
-control_down = ttk.Button(control_frame, text="Down", width=4)
+control_down = ttk.Button(control_frame, text="Down", width=6)
 control_down.grid(row=3, column=3, padx=10, pady=10)
 control_down.bind('<ButtonPress-1>', lambda event: start_sending_rc_control_user(0, 0, -20, 0))
 control_down.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
@@ -628,7 +644,7 @@ control_rotate_right.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_con
 
 # Flip Frame
 flip_frame = tk.LabelFrame(drone_frame, text="Flip", background=main_bg_color)
-flip_frame.grid(row=7, column=2, padx=10, pady=10)
+flip_frame.grid(row=7, column=1, padx=10, pady=10)
 
 flip_forward = ttk.Button(flip_frame, text="Forward", width=button_width,
                           command=lambda: threading.Thread(target=me.flip_forward, daemon=True).start())
@@ -648,16 +664,19 @@ flip_backward.grid(row=3, column=1, padx=10, pady=10)
 
 
 # QR Frame
-qr_label = ttk.Label(drone_frame, text="QR Code Value")
-qr_label.grid(row=10, column=0, padx=10, pady=10)
+qr_frame = tk.LabelFrame(drone_frame, text="QR Code", background=main_bg_color)
+qr_frame.grid(row=8, column=0, sticky="ew", padx=10, pady=10)
 
-text_qr_code = tk.Text(drone_frame, height=5, width=30, background=main_bg_color)
-text_qr_code.grid(row=10, column=1, sticky="ew", padx=10, pady=10)
+qr_label = ttk.Label(qr_frame, text="QR Code Value")
+qr_label.grid(row=0, column=0, padx=10, pady=10)
+
+text_qr_code = tk.Text(qr_frame, height=5, width=30, background=main_bg_color)
+text_qr_code.grid(row=0, column=1, sticky="ew", padx=10, pady=10)
 text_qr_code.config(state="disabled")
 
 # Error Frame
 error_frame = tk.LabelFrame(drone_frame, text="Error Log", background=main_bg_color)
-error_frame.grid(row=10, column=2, columnspan=2, sticky="ew", padx=10, pady=10)
+error_frame.grid(row=8, column=1, sticky="ew", padx=10, pady=10)
 
 error_log = tk.Text(error_frame, height=5, width=40, background=main_bg_color, fg="red")
 error_log.grid(row=0, column=0, padx=10, pady=10)
