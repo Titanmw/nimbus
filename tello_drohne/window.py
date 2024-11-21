@@ -46,7 +46,7 @@ def create_lightmode_styles(frame):
 
     # Farben und Schriftarten für Buttons (bleiben dunkel)
     style.configure('TButton', font=('Helvetica', 12, 'bold'), background='#333333', foreground='#00BFFF', padding=10)
-    style.map('TButton', background=[('active', '#444444')], foreground=[('active', '#00BFFF')])
+    style.map('TButton', background=[('active', '#666666')], foreground=[('active', '#00BFFF')])
 
     # Labels und LabelFrame Schriftfarbe auf Dunkel (#000000) ändern und Hintergrund hell
     style.configure('TLabel', font=('Helvetica', 12), background=parent_bg_color, foreground='#000000', padding=5)
@@ -176,7 +176,7 @@ def calculate_offset_and_size(points, image):
     return (offset_x, offset_y), size
 
 def send_RC():
-    global me, user_left_right, user_forward_backward, user_up_down, user_yaw, ai_left_right, ai_forward_backward, ai_up_down, ai_yaw
+    global is_proceeding_task, me, user_left_right, user_forward_backward, user_up_down, user_yaw, ai_left_right, ai_forward_backward, ai_up_down, ai_yaw
 
     if not me.is_flying:
         return
@@ -192,7 +192,9 @@ def send_RC():
         up_down = 0
         yaw = 0
 
-    if user_left_right != 0 or user_forward_backward != 0 or user_up_down != 0 or user_yaw != 0:
+    user_interaction = user_left_right != 0 or user_forward_backward != 0 or user_up_down != 0 or user_yaw != 0
+
+    if user_interaction:
         left_right = user_left_right
         forward_backward = user_forward_backward
         up_down = user_up_down
@@ -203,7 +205,8 @@ def send_RC():
     ai_up_down = 0
     ai_yaw = 0
 
-    me.send_rc_control(left_right, forward_backward, up_down, yaw)
+    if not is_proceeding_task or user_interaction:
+        me.send_rc_control(left_right, forward_backward, up_down, yaw)
 
 def start_sending_rc_control_user(left_right, forward_backward, up_down, yaw):
     global user_left_right, user_forward_backward, user_up_down, user_yaw
@@ -305,51 +308,51 @@ def process_qr_command(decoded_text):
     for line in lines[1:]:
         # Einzelnen Befehl verarbeiten
         parts = line.split(":")
-        if len(parts) >= 2:
-            action = f"COMMAND:{parts[0].upper()}"
+        if len(parts) >= 1:
+            action = parts[0].upper()
             args = parts[1:]  # Zusätzliche Argumente ab der 2. Stelle
 
             # Drohnenbefehle basierend auf dem Command
             try:
-                if action == "COMMAND:LAND":
+                if action == "LAND":
                     print("Befehl: Landen")
-                    threading.Thread(target=me.land, daemon=True).start()
-                elif action == "COMMAND:FORWARD":
+                    me.land()
+                elif action == "FORWARD":
                     print(f"Befehl: Vorwärts, Argumente: {args}")
-                    threading.Thread(target=me.move_forward, daemon=True, args=[int(args[0])]).start()
-                elif action == "COMMAND:LEFT":
+                    me.move_forward(int(args[0]))
+                elif action == "LEFT":
                     print(f"Befehl: Links, Argumente: {args}")
-                    threading.Thread(target=me.move_left, daemon=True, args=[int(args[0])]).start()
-                elif action == "COMMAND:RIGHT":
+                    me.move_left(int(args[0]))
+                elif action == "RIGHT":
                     print(f"Befehl: Rechts, Argumente: {args}")
-                    threading.Thread(target=me.move_right, daemon=True, args=[int(args[0])]).start()
-                elif action == "COMMAND:BACKWARD":
+                    me.move_right(int(args[0]))
+                elif action == "BACKWARD":
                     print(f"Befehl: Rückwärts, Argumente: {args}")
-                    threading.Thread(target=me.move_back, daemon=True, args=[int(args[0])]).start()
-                elif action == "COMMAND:FLIP FORWARD":
+                    me.move_back(int(args[0]))
+                elif action == "FLIP FORWARD":
                     print("Befehl: Flip Vorwärts")
-                    threading.Thread(target=me.flip_forward, daemon=True).start()
-                elif action == "COMMAND:FLIP LEFT":
+                    me.flip_forward(int(args[0]))
+                elif action == "FLIP LEFT":
                     print("Befehl: Flip Links")
-                    threading.Thread(target=me.flip_left, daemon=True).start()
-                elif action == "COMMAND:FLIP RIGHT":
+                    me.flip_left()
+                elif action == "FLIP RIGHT":
                     print("Befehl: Flip Rechts")
-                    threading.Thread(target=me.flip_right, daemon=True).start()
-                elif action == "COMMAND:FLIP BACKWARD":
+                    me.flip_right()
+                elif action == "FLIP BACKWARD":
                     print("Befehl: Flip Rückwärts")
-                    threading.Thread(target=me.flip_back, daemon=True).start()
-                elif action == "COMMAND:UP":
+                    me.flip_back()
+                elif action == "UP":
                     print(f"Befehl: Hoch, Argumente: {args}")
-                    threading.Thread(target=me.move_up, daemon=True, args=[int(args[0])]).start()
-                elif action == "COMMAND:DOWN":
+                    me.move_up(int(args[0]))
+                elif action == "DOWN":
                     print(f"Befehl: Runter, Argumente: {args}")
-                    threading.Thread(target=me.move_down, daemon=True, args=[int(args[0])]).start()
-                elif action == "COMMAND:ROTATE LEFT":
+                    me.move_down(int(args[0]))
+                elif action == "ROTATE LEFT":
                     print(f"Befehl: Links Drehen, Argumente: {args}")
-                    threading.Thread(target=me.rotate_counter_clockwise, daemon=True, args=[int(args[0])]).start()
-                elif action == "COMMAND:ROTATE RIGHT":
+                    me.rotate_counter_clockwise(int(args[0]))
+                elif action == "ROTATE RIGHT":
                     print(f"Befehl: Rechts Drehen, Argumente: {args}")
-                    threading.Thread(target=me.rotate_clockwise, daemon=True, args=[int(args[0])]).start()
+                    me.rotate_clockwise(int(args[0]))
                 else:
                     print(f"Unbekannter Befehl: {action}")
             except (IndexError, ValueError) as e:
@@ -360,7 +363,7 @@ def process_qr_command(decoded_text):
     is_proceeding_task = False
 
 def update_drone_image():
-    global connected
+    global me, connected, is_proceeding_task
     qr_detector = cv2.QRCodeDetector()
 
     while connected:
@@ -382,7 +385,6 @@ def update_drone_image():
         height, width, _ = image.shape
         cv2.putText(image, f"Resolution: {width}x{height}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 1, cv2.LINE_AA)
         cv2.putText(image, battery_text, (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 1, cv2.LINE_AA)
-        cv2.putText(image, f"Height: {me.get_height()} cm", (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 1, cv2.LINE_AA)
 
         if qr_detection and image is not None and image.size != 0:
             try:
@@ -403,22 +405,23 @@ def update_drone_image():
                         text_qr_code.config(state="disabled")
                         text_qr_code.update()
 
-                        # Process QR command if the format is COMMAND:<ACTION>
-                        if qr_controlled and decoded_text.startswith("COMMAND:"):
-                            process_qr_command(decoded_text)
+                        # Process QR command if the format is <ACTION>
+                        if qr_controlled:
+                            is_proceeding_task = True
+                            threading.Thread(target=process_qr_command, daemon=True, args=[decoded_text]).start()
 
                         offset, size = calculate_offset_and_size(point, image)
 
                         text_offset = f"Offset (x, y): ({offset[0]:.2f}, {offset[1]:.2f})"
                         text_size = f"Size: {size:.2f} px"
 
-                        cv2.putText(image, text_offset, (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2, cv2.LINE_AA)
-                        cv2.putText(image, text_size, (10, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2, cv2.LINE_AA)
+                        cv2.putText(image, text_offset, (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 1, cv2.LINE_AA)
+                        cv2.putText(image, text_size, (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 1, cv2.LINE_AA)
 
                         if qr_code_center and me.is_flying:
                             adjust_drone_position(offset, size, 70)
-            except e:
-                print(e)
+            except:
+                print("QR Error")
 
         if face_detection and image is not None and image.size != 0:
             try:
@@ -446,7 +449,7 @@ def update_drone_image():
                         if face_center and me.is_flying:
                             adjust_drone_position(offset, size, 70)
             except e:
-                print(e)
+                print("Face Detection Error")
 
         send_RC()
 
