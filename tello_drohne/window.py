@@ -82,10 +82,10 @@ def check_drone_status():
         if battery < 20:
             show_error("Warnung: Der Batteriestand ist niedrig!")
 
-        # Überprüfen der Flughöhe
-        height = me.get_height()
-        if height < 50:
-            show_error("Warnung: Die Flughöhe ist sehr niedrig!")
+        # # Überprüfen der Flughöhe
+        # height = me.get_height()
+        # if height < 50:
+        #     show_error("Warnung: Die Flughöhe ist sehr niedrig!")
 
     except Exception as e:
         show_error(f"Fehler beim Abrufen des Drohnenstatus: {e}")
@@ -199,13 +199,14 @@ def send_RC():
         forward_backward = user_forward_backward
         up_down = user_up_down
         yaw = user_yaw
+        is_proceeding_task = False
     
     ai_left_right = 0
     ai_forward_backward = 0
     ai_up_down = 0
     ai_yaw = 0
 
-    if not is_proceeding_task or user_interaction:
+    if not is_proceeding_task:
         me.send_rc_control(left_right, forward_backward, up_down, yaw)
 
 def start_sending_rc_control_user(left_right, forward_backward, up_down, yaw):
@@ -306,6 +307,11 @@ def process_qr_command(decoded_text):
 
     # Verarbeite jeden Befehl in den folgenden Zeilen
     for line in lines[1:]:
+
+        if not is_proceeding_task:
+            print("Task stopped")
+            return
+
         # Einzelnen Befehl verarbeiten
         parts = line.split(":")
         if len(parts) >= 1:
@@ -331,7 +337,7 @@ def process_qr_command(decoded_text):
                     me.move_back(int(args[0]))
                 elif action == "FLIP FORWARD":
                     print("Befehl: Flip Vorwärts")
-                    me.flip_forward(int(args[0]))
+                    me.flip_forward()
                 elif action == "FLIP LEFT":
                     print("Befehl: Flip Links")
                     me.flip_left()
@@ -377,6 +383,7 @@ def update_drone_image():
             break
 
         image = me.get_frame_read().frame
+
         if image is None:
             print("Kein Bild vom Video-Stream empfangen.")
             continue
@@ -521,7 +528,7 @@ def button_qr_center_toggle():
     drone_qr_center_button.update()
 
 def button_qr_controlled_toggle():
-    global qr_controlled, drone_qr_controlled_button
+    global qr_controlled, drone_qr_controlled_button, last_command_id
 
     if qr_controlled:
         qr_controlled = False
@@ -599,49 +606,49 @@ control_frame.grid(row=7, column=0, padx=10, pady=10)
 # Forward button
 control_forward = ttk.Button(control_frame, text="Forward", width=button_width)
 control_forward.grid(row=1, column=1, padx=10, pady=10)
-control_forward.bind('<ButtonPress-1>', lambda event: start_sending_rc_control_user(0, 20, 0, 0))
+control_forward.bind('<ButtonPress-1>', lambda event: start_sending_rc_control_user(0, 40, 0, 0))
 control_forward.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
 
 # Left button
 control_left = ttk.Button(control_frame, text="Left", width=button_width)
 control_left.grid(row=2, column=0, padx=10, pady=10)
-control_left.bind('<ButtonPress-1>', lambda event: start_sending_rc_control_user(-20, 0, 0, 0))
+control_left.bind('<ButtonPress-1>', lambda event: start_sending_rc_control_user(-40, 0, 0, 0))
 control_left.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
 
 # Right button
 control_right = ttk.Button(control_frame, text="Right", width=button_width)
 control_right.grid(row=2, column=2, padx=10, pady=10)
-control_right.bind('<ButtonPress-1>', lambda event: start_sending_rc_control_user(20, 0, 0, 0))
+control_right.bind('<ButtonPress-1>', lambda event: start_sending_rc_control_user(40, 0, 0, 0))
 control_right.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
 
 # Back button
 control_back = ttk.Button(control_frame, text="Back", width=button_width)
 control_back.grid(row=3, column=1, padx=10, pady=10)
-control_back.bind('<ButtonPress-1>', lambda event: start_sending_rc_control_user(0, -20, 0, 0))
+control_back.bind('<ButtonPress-1>', lambda event: start_sending_rc_control_user(0, -40, 0, 0))
 control_back.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
 
 # Up button
 control_up = ttk.Button(control_frame, text="Up", width=6)
 control_up.grid(row=1, column=3, padx=10, pady=10)
-control_up.bind('<ButtonPress-1>', lambda event: start_sending_rc_control_user(0, 0, 20, 0))
+control_up.bind('<ButtonPress-1>', lambda event: start_sending_rc_control_user(0, 0, 40, 0))
 control_up.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
 
 # Down button
 control_down = ttk.Button(control_frame, text="Down", width=6)
 control_down.grid(row=3, column=3, padx=10, pady=10)
-control_down.bind('<ButtonPress-1>', lambda event: start_sending_rc_control_user(0, 0, -20, 0))
+control_down.bind('<ButtonPress-1>', lambda event: start_sending_rc_control_user(0, 0, -40, 0))
 control_down.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
 
 # Rotate Left button
 control_rotate_left = ttk.Button(control_frame, text="Rotate Left", width=button_width)
 control_rotate_left.grid(row=1, column=0, padx=10, pady=10)
-control_rotate_left.bind('<ButtonPress-1>', lambda event: start_sending_rc_control_user(0, 0, 0, -30))
+control_rotate_left.bind('<ButtonPress-1>', lambda event: start_sending_rc_control_user(0, 0, 0, -60))
 control_rotate_left.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
 
 # Rotate Right button
 control_rotate_right = ttk.Button(control_frame, text="Rotate Right", width=button_width)
 control_rotate_right.grid(row=1, column=2, padx=10, pady=10)
-control_rotate_right.bind('<ButtonPress-1>', lambda event: start_sending_rc_control_user(0, 0, 0, 30))
+control_rotate_right.bind('<ButtonPress-1>', lambda event: start_sending_rc_control_user(0, 0, 0, 60))
 control_rotate_right.bind('<ButtonRelease-1>', lambda event: stop_sending_rc_control())
 
 
