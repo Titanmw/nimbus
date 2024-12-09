@@ -13,7 +13,8 @@ def connect_to_drone():
     """Verbindung zur Drohne herstellen."""
     global drone_connection
     try:
-        drone_connection = mavutil.mavlink_connection('COM14', baud=115200)
+        # drone_connection = mavutil.mavlink_connection('COM14', baud=115200)
+        drone_connection = mavutil.mavlink_connection('COM6', baud=57600)
         print("Verbindung hergestellt.")
         drone_connection.wait_heartbeat()
         print("Heartbeat empfangen. Verbindung zur Drohne aktiv!")
