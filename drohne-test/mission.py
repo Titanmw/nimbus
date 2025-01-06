@@ -1,123 +1,155 @@
-#!/usr/bin/env python3
+from pymavlink import mavutil
+import time
 
-import asyncio
+def connect_to_drone():
+    """Verbindung zur Drohne herstellen."""
+    try:
+        connection = mavutil.mavlink_connection(
+            'COM6', baud=57600  # Port und Baudrate anpassen
+        )
+        print("Verbindung hergestellt.")
+        return connection
+    except Exception as e:
+        print(f"Fehler beim Verbinden: {e}")
+        return None
 
-from mavsdk import System
-from mavsdk.mission import (MissionItem, MissionPlan)
+def wait_for_heartbeat(connection):
+    """Warten auf den Heartbeat der Drohne."""
+    print("Warten auf Heartbeat...")
+    connection.wait_heartbeat()
+    print("Heartbeat empfangen. Verbindung zur Drohne aktiv!")
 
+def clear_all_waypoints(connection):
+    """Alle gespeicherten Wegpunkte löschen."""
+    print("Lösche alle gespeicherten Missionen/Wegpunkte...")
+    connection.mav.mission_clear_all_send(connection.target_system, connection.target_component)
+    print("Alle Wegpunkte erfolgreich gelöscht.")
 
-async def run():
-    drone = System()
-    await drone.connect(system_address="udp://:14540")
+def upload_mission(connection, lat, lon, alt):
+    """Neue Mission hinzufügen."""
+    print("Erstelle neue Mission...")
+    mission_items = [
+        mavutil.mavlink.MAVLink_mission_item_message(
+            connection.target_system,
+            connection.target_component,
+            0,  # Sequenznummer
+            mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT,  # Relativer Höhenrahmen
+            mavutil.mavlink.MAV_CMD_NAV_WAYPOINT,  # Wegpunkt-Befehl
+            1,  # Aktueller Wegpunkt
+            1,  # Automatisch fortfahren
+            0, 0, 0, 0,  # Keine weiteren Parameter
+            lat,  # Latitude in Grad
+            lon,  # Longitude in Grad
+            alt   # Höhe in Metern
+        )
+    ]
 
-    print("Waiting for drone to connect...")
-    async for state in drone.core.connection_state():
-        if state.is_connected:
-            print(f"-- Connected to drone!")
-            break
+    print(f"Mission-Wegpunkt: Latitude={lat}, Longitude={lon}, Höhe={alt}m")
+    connection.mav.mission_count_send(connection.target_system, connection.target_component, len(mission_items))
 
-    print_mission_progress_task = asyncio.ensure_future(
-        print_mission_progress(drone))
+    for i, item in enumerate(mission_items):
+        print(f"Sende Wegpunkt {i}: {item}")
+        connection.mav.mission_item_send(
+            connection.target_system, connection.target_component,
+            i, item.frame, item.command,
+            item.current, item.autocontinue,
+            item.param1, item.param2, item.param3, item.param4,
+            item.x, item.y, item.z
+        )
 
-    running_tasks = [print_mission_progress_task]
-    termination_task = asyncio.ensure_future(
-        observe_is_in_air(drone, running_tasks))
+    print("Warten auf Mission Bestätigung...")
+    monitor_mission_flow(connection)
 
-    mission_items = []
-    mission_items.append(MissionItem(47.398039859999997,
-                                     8.5455725400000002,
-                                     25,
-                                     10,
-                                     True,
-                                     float('nan'),
-                                     float('nan'),
-                                     MissionItem.CameraAction.NONE,
-                                     float('nan'),
-                                     float('nan'),
-                                     float('nan'),
-                                     float('nan'),
-                                     float('nan'),
-                                     MissionItem.VehicleAction.NONE))
-    mission_items.append(MissionItem(47.398036222362471,
-                                     8.5450146439425509,
-                                     25,
-                                     10,
-                                     True,
-                                     float('nan'),
-                                     float('nan'),
-                                     MissionItem.CameraAction.NONE,
-                                     float('nan'),
-                                     float('nan'),
-                                     float('nan'),
-                                     float('nan'),
-                                     float('nan'),
-                                     MissionItem.VehicleAction.NONE))
-    mission_items.append(MissionItem(47.397825620791885,
-                                     8.5450092830163271,
-                                     25,
-                                     10,
-                                     True,
-                                     float('nan'),
-                                     float('nan'),
-                                     MissionItem.CameraAction.NONE,
-                                     float('nan'),
-                                     float('nan'),
-                                     float('nan'),
-                                     float('nan'),
-                                     float('nan'),
-                                     MissionItem.VehicleAction.NONE))
+def monitor_mission_flow(connection):
+    """Warten auf die Bestätigung der Mission."""
+    while True:
+        msg = connection.recv_match(type=None, blocking=True)
+        if msg:
+            if msg.get_type() == "MISSION_ACK":
+                print("Mission erfolgreich bestätigt!")
+                break
 
-    mission_plan = MissionPlan(mission_items)
+def check_gps_fix(connection):
+    """Prüfen, ob die Drohne GPS-Daten liefert."""
+    print("Überprüfe GPS-Daten...")
+    while True:
+        msg = connection.recv_match(type="GLOBAL_POSITION_INT", blocking=True)
+        if msg:
+            latitude = msg.lat / 1e7
+            longitude = msg.lon / 1e7
+            altitude = msg.alt / 1000
+            if latitude != 0.0 and longitude != 0.0:
+                print(f"GPS-Fix vorhanden: Latitude={latitude}, Longitude={longitude}, Höhe={altitude}m")
+                return
+            else:
+                print("Kein gültiger GPS-Fix. Warte auf GPS...")
 
-    await drone.mission.set_return_to_launch_after_mission(True)
+def read_all_missions(connection):
+    """Alle gespeicherten Missionen aus der Drohne auslesen."""
+    print("Fordere Missionsliste von der Drohne an...")
+    connection.mav.mission_request_list_send(connection.target_system, connection.target_component)
 
-    print("-- Uploading mission")
-    await drone.mission.upload_mission(mission_plan)
+    # Warten auf MISSION_COUNT
+    msg = connection.recv_match(type="MISSION_COUNT", blocking=True)
+    if not msg:
+        print("Keine Missionen gefunden.")
+        return
 
-    print("Waiting for drone to have a global position estimate...")
-    async for health in drone.telemetry.health():
-        if health.is_global_position_ok and health.is_home_position_ok:
-            print("-- Global position estimate OK")
-            break
+    mission_count = msg.count
+    print(f"Anzahl der gespeicherten Wegpunkte: {mission_count}")
 
-    print("-- Arming")
-    await drone.action.arm()
+    # Wegpunkte abrufen
+    for i in range(mission_count):
+        print(f"Fordere Wegpunkt {i} an...")
+        connection.mav.mission_request_int_send(connection.target_system, connection.target_component, i)
+        msg = connection.recv_match(type="MISSION_ITEM_INT", blocking=True)
+        if msg:
+            latitude = msg.x / 1e7  # Konvertiere Latitude in Grad
+            longitude = msg.y / 1e7  # Konvertiere Longitude in Grad
+            altitude = msg.z  # Höhe in Metern
+            print(f"Wegpunkt {i}: Latitude={latitude}, Longitude={longitude}, Höhe={altitude}m")
+        else:
+            print(f"Wegpunkt {i} konnte nicht abgerufen werden.")
 
-    print("-- Starting mission")
-    await drone.mission.start_mission()
+def disconnect_drone(connection):
+    """Verbindung zur Drohne trennen."""
+    if connection:
+        print("Verbindung zur Drohne wird getrennt...")
+        connection.close()
+        print("Verbindung erfolgreich getrennt.")
+    else:
+        print("Keine aktive Verbindung gefunden.")
 
-    await termination_task
-
-
-async def print_mission_progress(drone):
-    async for mission_progress in drone.mission.mission_progress():
-        print(f"Mission progress: "
-              f"{mission_progress.current}/"
-              f"{mission_progress.total}")
-
-
-async def observe_is_in_air(drone, running_tasks):
-    """ Monitors whether the drone is flying or not and
-    returns after landing """
-
-    was_in_air = False
-
-    async for is_in_air in drone.telemetry.in_air():
-        if is_in_air:
-            was_in_air = is_in_air
-
-        if was_in_air and not is_in_air:
-            for task in running_tasks:
-                task.cancel()
-                try:
-                    await task
-                except asyncio.CancelledError:
-                    pass
-            await asyncio.get_event_loop().shutdown_asyncgens()
-
-            return
+def print_system_ids(connection):
+    print("Überprüfe System- und Komponenten-IDs...")
+    connection.mav.heartbeat_send(6, 8, 0, 0, 0)  # Beispiel für MAVLink Heartbeat
+    heartbeat = connection.recv_match(type="HEARTBEAT", blocking=True)
+    if heartbeat:
+        print(f"Target System: {heartbeat.get_srcSystem()}, Target Component: {heartbeat.get_srcComponent()}")
 
 
 if __name__ == "__main__":
-    # Run the asyncio loop
-    asyncio.run(run())
+    # GPS-Koordinaten der U-Bahn-Station Alt Erlaa
+    ALT_ERLAA_LAT = 48.146290
+    ALT_ERLAA_LON = 16.287330
+    ALTITUDE = 10  # Zielhöhe in Metern
+
+    # Verbindung herstellen
+    drone_connection = connect_to_drone()
+
+    if drone_connection:
+        try:
+            wait_for_heartbeat(drone_connection)
+
+            # GPS funktinoiert noch nicht
+            # check_gps_fix(drone_connection)
+
+            read_all_missions(drone_connection)
+
+            clear_all_waypoints(drone_connection)
+
+            # upload_mission(drone_connection, ALT_ERLAA_LAT, ALT_ERLAA_LON, ALTITUDE)
+
+            read_all_missions(drone_connection)
+        finally:
+            disconnect_drone(drone_connection)
