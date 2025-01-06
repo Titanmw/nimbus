@@ -1,0 +1,8 @@
+0 Person
+1 Chair
+2 Door
+4 Dog
+5 Traffic Light
+6 Crosswalk
+7 Stairs
+8 Sign

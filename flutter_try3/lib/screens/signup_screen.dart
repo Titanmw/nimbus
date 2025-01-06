@@ -20,28 +20,36 @@ class _SignupScreenState extends State<SignUpScreen> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
+  bool isLoading = false;
+
   void signUpUser(String email, String password, String username) async {
+    setState(() {
+      isLoading = true; // Ladezustand aktivieren
+    });
+
     try {
-      // Erstellen des Benutzers mit E-Mail und Passwort
+      // Benutzer registrieren
       UserCredential userCredential =
           await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
 
-      // Nutzer-ID erhalten
       String uid = userCredential.user!.uid;
 
-      // Benutzername und andere Daten in Firestore speichern
+      // Benutzerinformationen speichern
       await _firestore.collection('users').doc(uid).set({
         'username': username,
         'email': email,
-        // Weitere Felder können hier hinzugefügt werden
       });
 
       print("Benutzer erfolgreich registriert und in Firestore gespeichert.");
     } catch (e) {
       print("Fehler beim Sign-Up: $e");
+    } finally {
+      setState(() {
+        isLoading = false; // Ladezustand deaktivieren
+      });
     }
   }
 
@@ -58,89 +66,99 @@ class _SignupScreenState extends State<SignUpScreen> {
                 fontSize: 24, fontWeight: FontWeight.bold, color: Colors.black),
           ),
         ),
-        body: Container(
-          width: MediaQuery.of(context).size.width,
-          height: MediaQuery.of(context).size.height,
-          decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                  colors: [Color.fromARGB(255, 72, 93, 202), Colors.white],
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter)),
-          child: SingleChildScrollView(
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(
-                  20, MediaQuery.of(context).size.height * 0.15, 20, 0),
-              child: Column(
-                children: <Widget>[
-                  const SizedBox(
-                    height: 20,
-                  ),
-                  reusableTextField("Enter Username", Icons.person_outline,
-                      false, _usernameTextController),
-                  const SizedBox(
-                    height: 20,
-                  ),
-                  reusableTextField("Enter E-Mail", Icons.email_outlined, false,
-                      _emailTextController),
-                  const SizedBox(
-                    height: 20,
-                  ),
-                  reusableTextField("Enter Password", Icons.lock_outline, false,
-                      _passwordTextController),
-                  const SizedBox(
-                    height: 20,
-                  ),
-                  firebaseButton(context, "Sign Up", () async {
-                    if (_usernameTextController.text.isEmpty ||
-                        _emailTextController.text.isEmpty ||
-                        _passwordTextController.text.isEmpty) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                            content: Text("Please fill in all fields")),
-                      );
-                    } else if (!_emailTextController.text.contains('@')) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                            content: Text("Please enter a valid email")),
-                      );
-                    } else if (_passwordTextController.text.length < 6) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                            content: Text(
-                                "Password should be at least 6 characters")),
-                      );
-                    } else {
-                      try {
-                        // Aufruf der Funktion signUpUser und Warten auf deren Abschluss
-                        signUpUser(
-                          _emailTextController.text.trim(),
-                          _passwordTextController.text.trim(),
-                          _usernameTextController.text.trim(),
-                        );
+        body: isLoading // Wenn isLoading true ist, zeige den ProgressIndicator
+            ? const Center(child: CircularProgressIndicator())
+            : Container(
+                width: MediaQuery.of(context).size.width,
+                height: MediaQuery.of(context).size.height,
+                decoration: const BoxDecoration(
+                    gradient: LinearGradient(colors: [
+                  Color.fromARGB(255, 72, 93, 202),
+                  Colors.white
+                ], begin: Alignment.topCenter, end: Alignment.bottomCenter)),
+                child: SingleChildScrollView(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(
+                        20, MediaQuery.of(context).size.height * 0.15, 20, 0),
+                    child: Column(
+                      children: <Widget>[
+                        const SizedBox(
+                          height: 20,
+                        ),
+                        reusableTextField(
+                            "Enter Username",
+                            Icons.person_outline,
+                            false,
+                            _usernameTextController),
+                        const SizedBox(
+                          height: 20,
+                        ),
+                        reusableTextField("Enter E-Mail", Icons.email_outlined,
+                            false, _emailTextController),
+                        const SizedBox(
+                          height: 20,
+                        ),
+                        reusableTextField("Enter Password", Icons.lock_outline,
+                            false, _passwordTextController),
+                        const SizedBox(
+                          height: 20,
+                        ),
+                        firebaseButton(
+                            context, isLoading ? "Loading..." : "Sign Up",
+                            () async {
+                          if (_usernameTextController.text.isEmpty ||
+                              _emailTextController.text.isEmpty ||
+                              _passwordTextController.text.isEmpty) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                  content: Text("Please fill in all fields")),
+                            );
+                          } else if (!_emailTextController.text.contains('@')) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                  content: Text("Please enter a valid email")),
+                            );
+                          } else if (_passwordTextController.text.length < 6) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                  content: Text(
+                                      "Password should be at least 6 characters")),
+                            );
+                          } else {
+                            try {
+                              // Aufruf der Funktion signUpUser und Warten auf deren Abschluss
+                              signUpUser(
+                                _emailTextController.text.trim(),
+                                _passwordTextController.text.trim(),
+                                _usernameTextController.text.trim(),
+                              );
 
-                        print("Created new Account");
-                        if (mounted) {
-                          // Überprüfen, ob der Kontext noch vorhanden ist
-                          Navigator.pushReplacement(
-                            context,
-                            MaterialPageRoute(
-                                builder: (context) => HomeScreen(
-                                    username: _usernameTextController.text)),
-                          );
-                        }
-                      } catch (error) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text("Error: ${error.toString()}")),
-                        );
-                      }
-                    }
-                  }),
-                  signInOption()
-                ],
-              ),
-            ),
-          ),
-        ));
+                              print("Created new Account");
+                              if (mounted) {
+                                // Überprüfen, ob der Kontext noch vorhanden ist
+                                Navigator.pushReplacement(
+                                  context,
+                                  MaterialPageRoute(
+                                      builder: (context) => HomeScreen(
+                                          username:
+                                              _usernameTextController.text)),
+                                );
+                              }
+                            } catch (error) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                    content:
+                                        Text("Error: ${error.toString()}")),
+                              );
+                            }
+                          }
+                        }),
+                        signInOption()
+                      ],
+                    ),
+                  ),
+                ),
+              ));
   }
 
   Row signInOption() {
@@ -148,7 +166,7 @@ class _SignupScreenState extends State<SignUpScreen> {
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         const Text("Already have account?",
-            style: TextStyle(color: Colors.black)),
+            style: TextStyle(fontSize: 22, color: Colors.black)),
         GestureDetector(
           onTap: () {
             Navigator.push(context,
@@ -159,6 +177,7 @@ class _SignupScreenState extends State<SignUpScreen> {
             style: TextStyle(
               color: Colors.blue,
               fontWeight: FontWeight.bold,
+              fontSize: 22
             ),
           ),
         ),

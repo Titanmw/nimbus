@@ -13,11 +13,11 @@ TextField reusableTextField(String text, IconData icon, bool isPasswordType,
       enableSuggestions: isPasswordType,
       autocorrect: isPasswordType,
       cursorColor: Colors.white,
-      style: TextStyle(color: Colors.white.withOpacity(0.9)),
+      style: const TextStyle(color: Colors.white, fontSize: 18),
       decoration: InputDecoration(
         prefixIcon: Icon(icon, color: Colors.white70),
         labelText: text,
-        labelStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
+        labelStyle: const TextStyle(color: Colors.white),
         filled: true,
         floatingLabelBehavior: FloatingLabelBehavior.never,
         fillColor: Colors.black.withOpacity(0.7),
@@ -52,8 +52,60 @@ Container firebaseButton(
           RoundedRectangleBorder(borderRadius: BorderRadius.circular(30))),
       ),
         child: Text(title,
-        style: const TextStyle(color: Colors.black87, fontWeight: FontWeight.bold, fontSize: 16
+        style: const TextStyle(color: Colors.black87, fontWeight: FontWeight.bold, fontSize: 20
         )
       ),
   ));
+}
+
+
+class CustomNavigationBar extends StatelessWidget {
+  final int currentIndex;
+  final ValueChanged<int> onTap;
+
+  const CustomNavigationBar({
+    super.key,
+    required this.currentIndex,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      margin: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(30),
+        boxShadow: const [
+          BoxShadow(
+            color: Colors.black12,
+            blurRadius: 10,
+            spreadRadius: 1,
+          ),
+        ],
+      ),
+      child: BottomNavigationBar(
+        currentIndex: currentIndex,
+        onTap: onTap,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        type: BottomNavigationBarType.fixed,
+        selectedItemColor: Color.fromARGB(255, 72, 93, 202),
+        unselectedItemColor: Colors.grey,
+        showSelectedLabels: true,
+        showUnselectedLabels: true,
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.home_filled),
+            label: 'Home',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.settings_outlined),
+            label: 'Settings',
+          ),
+        ],
+      ),
+    );
+  }
 }

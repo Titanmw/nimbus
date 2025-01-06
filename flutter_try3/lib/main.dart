@@ -18,7 +18,7 @@ class MyApp extends StatelessWidget {
       // Remove Demo Banner
       debugShowCheckedModeBanner: false,
 
-      title: 'Nimbus Demo 3',
+      title: 'Nimbus App',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
