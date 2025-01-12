@@ -28,6 +28,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       backgroundColor: Colors.white,
       appBar: AppBar(
         backgroundColor: Colors.white,
@@ -220,10 +221,11 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       ),
-      body: Semantics(
+      body: SafeArea(
+        child: Semantics(
         label: 'Hauptinhalt',
         child: Container(
-          padding: const EdgeInsets.fromLTRB(20, 20, 0, 0),
+          padding: const EdgeInsets.fromLTRB(20, 10, 0, 0),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.start,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -282,14 +284,14 @@ class _HomeScreenState extends State<HomeScreen> {
                                 builder: (context) => NavigationsScreen(username: _username ?? 'Guest')));
                       },
                       style: ButtonStyle(
-                        elevation: MaterialStateProperty.all(9),
-                        backgroundColor: MaterialStateProperty.resolveWith((states) {
-                          if (states.contains(MaterialState.pressed)) {
+                        elevation: WidgetStateProperty.all(9),
+                        backgroundColor: WidgetStateProperty.resolveWith((states) {
+                          if (states.contains(WidgetState.pressed)) {
                             return Colors.black45;
                           }
                           return const Color.fromARGB(255, 255, 255, 255);
                         }),
-                        shape: MaterialStateProperty.all<RoundedRectangleBorder>(
+                        shape: WidgetStateProperty.all<RoundedRectangleBorder>(
                             RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(30))),
                       ),
@@ -318,14 +320,14 @@ class _HomeScreenState extends State<HomeScreen> {
                                     username: _username ?? 'Guest')));
                       },
                       style: ButtonStyle(
-                        elevation: MaterialStateProperty.all(9),
-                        backgroundColor: MaterialStateProperty.resolveWith((states) {
-                          if (states.contains(MaterialState.pressed)) {
+                        elevation: WidgetStateProperty.all(9),
+                        backgroundColor: WidgetStateProperty.resolveWith((states) {
+                          if (states.contains(WidgetState.pressed)) {
                             return Colors.black45;
                           }
                           return Colors.white;
                         }),
-                        shape: MaterialStateProperty.all<RoundedRectangleBorder>(
+                        shape: WidgetStateProperty.all<RoundedRectangleBorder>(
                             RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(30))),
                       ),
@@ -339,6 +341,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
         ),
+      ),
       ),
       bottomNavigationBar: Semantics(
         label: 'Untere Navigationsleiste',

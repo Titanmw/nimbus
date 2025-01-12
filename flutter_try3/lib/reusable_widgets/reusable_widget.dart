@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:io' show Platform;
 
 Image logoWidget(String imagesrc) {
   return Image.asset(imagesrc,
@@ -71,8 +72,13 @@ class CustomNavigationBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Spezifische Einstellungen für iOS
+    final isIOS = Platform.isIOS;
+    final double verticalPadding = isIOS ? 1.24 : 1.0; // Weniger Padding für iOS
+    final double iconSize = isIOS ? 20 : 20; // Kleinere Icons für iOS
+
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: EdgeInsets.symmetric(vertical: verticalPadding),
       margin: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -91,17 +97,17 @@ class CustomNavigationBar extends StatelessWidget {
         backgroundColor: Colors.transparent,
         elevation: 0,
         type: BottomNavigationBarType.fixed,
-        selectedItemColor: Color.fromARGB(255, 72, 93, 202),
+        selectedItemColor: const Color.fromARGB(255, 72, 93, 202),
         unselectedItemColor: Colors.grey,
         showSelectedLabels: true,
         showUnselectedLabels: true,
-        items: const [
+        items: [
           BottomNavigationBarItem(
-            icon: Icon(Icons.home_filled),
+            icon: Icon(Icons.home_filled, size: iconSize),
             label: 'Home',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.settings_outlined),
+            icon: Icon(Icons.settings_outlined, size: iconSize),
             label: 'Settings',
           ),
         ],

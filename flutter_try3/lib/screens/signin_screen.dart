@@ -172,7 +172,7 @@ class _SignInScreenState extends State<SignInScreen> {
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         const Text("Don't have account?",
-            style: TextStyle(fontSize: 22, color: Colors.black)),
+            style: TextStyle(fontSize: 20, color: Colors.black)),
         GestureDetector(
           onTap: () {
             Navigator.push(
@@ -186,7 +186,7 @@ class _SignInScreenState extends State<SignInScreen> {
           child: const Text(
             " Sign Up ",
             style: TextStyle(
-              fontSize: 22,
+              fontSize: 20,
               color: Colors.blue,
               fontWeight: FontWeight.bold,
             ),
