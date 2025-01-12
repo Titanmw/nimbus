@@ -42,6 +42,7 @@ dependencies:
 
   # TFLITE
   tflite_flutter: ^0.11.0
+  device_preview: ^1.2.0
 
 
   

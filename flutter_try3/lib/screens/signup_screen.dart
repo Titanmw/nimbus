@@ -166,7 +166,7 @@ class _SignupScreenState extends State<SignUpScreen> {
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         const Text("Already have account?",
-            style: TextStyle(fontSize: 22, color: Colors.black)),
+            style: TextStyle(fontSize: 18, color: Colors.black)),
         GestureDetector(
           onTap: () {
             Navigator.push(context,
@@ -177,7 +177,7 @@ class _SignupScreenState extends State<SignUpScreen> {
             style: TextStyle(
               color: Colors.blue,
               fontWeight: FontWeight.bold,
-              fontSize: 22
+              fontSize: 18
             ),
           ),
         ),
