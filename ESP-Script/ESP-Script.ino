@@ -2,6 +2,7 @@
 #include <MAVLink.h>
 #include <WiFi.h>
 #include <WebServer.h>
+#include <ArduinoJson.h>
 
 // UART Pins
 #define RX_PIN 4
@@ -15,8 +16,8 @@
 #define TARGET_COMPONENT_ID 0
 
 // WiFi credentials
-#define WIFI_SSID "ESP32_Hotspot"
-#define WIFI_PASSWORD "12345678"
+#define WIFI_SSID "Sebastians Kurz IPhone"
+#define WIFI_PASSWORD "Korruption"
 
 // UART buffer size
 #define BUFFER_SIZE 256
@@ -34,6 +35,8 @@ struct Waypoint {
 };
 std::vector<Waypoint> waypoints;
 
+bool readyToArm = false; // Status, ob die Drohne bereit ist zu armen
+
 // WiFi and WebServer
 WebServer server(80);
 uint8_t rxBuffer[BUFFER_SIZE];
@@ -46,12 +49,14 @@ void setup() {
         Serial1.begin(BAUD_RATE, SERIAL_8N1, RX_PIN, TX_PIN);
         Serial.begin(115200); // For debugging
 
-        Serial.println("ESP32-S3 MAVLink Example with WebServer - Starting");
+        Serial.println("ESP32-S3 MAVLink with WebServer - Starting");
 
         // Set up WiFi and start web server
         setupWiFi();
         server.on("/getBattery", handleGetBattery);
         server.on("/getWayPoints", handleGetWayPoints);
+        server.on("/arm", HTTP_PUT, handleArm);
+        server.on("/readyToArm", handleGetReadyToArm);
         server.begin();
         Serial.println("Web server started");
 
@@ -63,6 +68,19 @@ void setup() {
     }
 }
 
+void setupWiFi() {
+    WiFi.begin(WIFI_SSID, WIFI_PASSWORD); // WLAN-SSID und Passwort
+
+    Serial.println("Connecting to WiFi...");
+    while (WiFi.status() != WL_CONNECTED) {
+        delay(1000);
+        Serial.print(".");
+    }
+    Serial.println("\nWiFi connected");
+    Serial.print("IP Address: ");
+    Serial.println(WiFi.localIP()); // Zeigt die lokale IP-Adresse des ESP32 im Netzwerk an
+}
+
 void loop() {
     try {
         // Handle HTTP requests
@@ -72,7 +90,7 @@ void loop() {
         checkForIncomingMessages();
 
         // Send a MAVLink Heartbeat message every second
-        if (millis() - lastHeartbeatTime >= 1000) {
+        if (millis() - lastHeartbeatTime >= 10000) {
             sendHeartbeat();
             lastHeartbeatTime = millis();
 
@@ -101,12 +119,26 @@ void sendHeartbeat() {
 
         // Send the serialized message via UART
         Serial1.write(buffer, len);
-
-        Serial.println("Heartbeat sent");
     } catch (const std::exception &e) {
         Serial.println("Error sending Heartbeat: ");
         Serial.println(e.what());
     }
+}
+
+void requestWaypoints() {
+    mavlink_message_t msg;
+    mavlink_msg_mission_request_list_pack(
+        SYSTEM_ID, COMPONENT_ID, &msg,
+        TARGET_SYSTEM_ID, TARGET_COMPONENT_ID
+        , 0 // Add the final argument as required by the function
+    );
+
+    uint8_t buffer[MAVLINK_MAX_PACKET_LEN];
+    uint16_t len = mavlink_msg_to_send_buffer(buffer, &msg);
+
+    // Send the serialized message via UART
+    Serial1.write(buffer, len);
+    //Serial.println("Mission Request List sent");
 }
 
 void checkForIncomingMessages() {
@@ -124,13 +156,33 @@ void checkForIncomingMessages() {
 
             // Try to decode a MAVLink message
             if (mavlink_parse_char(MAVLINK_COMM_0, c, &msg, &status)) {
-                Serial.println("MAVLink message received!");
-                Serial.print("Message ID: ");
-                Serial.println(msg.msgid);
+                //Serial.println("MAVLink message received!");
+                //Serial.print("Message ID: ");
+                //Serial.println(msg.msgid);
 
                 switch (msg.msgid) {
+                    case MAVLINK_MSG_ID_HEARTBEAT: {
+                        mavlink_heartbeat_t heartbeat;
+                        mavlink_msg_heartbeat_decode(&msg, &heartbeat);
+
+                        Serial.print("System Status: ");
+                        Serial.println(heartbeat.system_status); // Aktueller Zustand der Drohne
+                        Serial.print("Base Mode: ");
+                        Serial.println(heartbeat.base_mode); // Modus der Drohne
+
+                        // Aktualisiere readyToArm basierend auf dem Systemstatus
+                        if (heartbeat.system_status == MAV_STATE_STANDBY) {
+                            readyToArm = true; // Drohne ist bereit zu armen
+                            Serial.println("Drone is ready to arm.");
+                        } else {
+                            readyToArm = false; // Drohne ist nicht bereit zu armen
+                            Serial.println("Drone is not ready to arm.");
+                        }
+                        break;
+                    }
+
                     case MAVLINK_MSG_ID_BATTERY_STATUS: {
-                        Serial.println("Battery Status received");
+                        //Serial.println("Battery Status received");
                         mavlink_battery_status_t battery_status;
                         mavlink_msg_battery_status_decode(&msg, &battery_status);
 
@@ -143,18 +195,18 @@ void checkForIncomingMessages() {
                             batteryCurrent = battery_status.current_battery / 100.0; // Convert mA to A
                         }
 
-                        Serial.print("Voltage (V): ");
-                        Serial.println(batteryVoltage);
-                        Serial.print("Current (A): ");
-                        Serial.println(batteryCurrent);
+                        //Serial.print("Voltage (V): ");
+                        //Serial.println(batteryVoltage);
+                        //Serial.print("Current (A): ");
+                        //Serial.println(batteryCurrent);
                         break;
                     }
 
                     case MAVLINK_MSG_ID_MISSION_COUNT: {
                         mavlink_mission_count_t mission_count;
                         mavlink_msg_mission_count_decode(&msg, &mission_count);
-                        Serial.print("Mission Count: ");
-                        Serial.println(mission_count.count);
+                        //Serial.print("Mission Count: ");
+                        //Serial.println(mission_count.count);
                         waypoints.clear();
                         for (uint16_t i = 0; i < mission_count.count; i++) {
                             mavlink_message_t req_msg;
@@ -180,14 +232,14 @@ void checkForIncomingMessages() {
                             mission_item.z
                         };
                         waypoints.push_back(wp);
-                        Serial.print("Waypoint received: ");
-                        Serial.println(wp.seq);
+                        //Serial.print("Waypoint received: ");
+                        //Serial.println(wp.seq);
                         break;
                     }
 
                     default:
-                        Serial.print("Unhandled message ID: ");
-                        Serial.println(msg.msgid);
+                        //Serial.print("Unhandled message ID: ");
+                        //Serial.println(msg.msgid);
                         break;
                 }
             }
@@ -227,28 +279,61 @@ void handleGetWayPoints() {
     server.send(200, "application/json", response);
 }
 
-void setupWiFi() {
-    WiFi.softAP(WIFI_SSID, WIFI_PASSWORD);
-    Serial.println("WiFi hotspot started");
-    Serial.print("SSID: ");
-    Serial.println(WIFI_SSID);
-    Serial.print("IP Address: ");
-    Serial.println(WiFi.softAPIP());
+void handleArm() {
+    if (server.hasArg("plain")) {
+        StaticJsonDocument<200> doc;
+        DeserializationError error = deserializeJson(doc, server.arg("plain"));
+
+        if (error) {
+            Serial.print("JSON Parsing Error: ");
+            Serial.println(error.c_str());
+            server.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Invalid JSON format.\"}");
+            return;
+        }
+
+        bool armCommand = doc["state"] == 1;
+        Serial.print("Arm Command: ");
+        Serial.println(armCommand ? "ARM" : "DISARM");
+
+        String response;
+
+        mavlink_message_t msg;
+        uint8_t buf[MAVLINK_MAX_PACKET_LEN];
+
+        mavlink_msg_command_long_pack(SYSTEM_ID, COMPONENT_ID, &msg,
+                                      TARGET_SYSTEM_ID, TARGET_COMPONENT_ID,
+                                      MAV_CMD_COMPONENT_ARM_DISARM,
+                                      0, armCommand ? 1 : 0, 0, 0, 0, 0, 0, 0);
+
+        uint16_t len = mavlink_msg_to_send_buffer(buf, &msg);
+        Serial.print("MAVLink Message Length: ");
+        Serial.println(len);
+
+        // Debug: Output the MAVLink message buffer
+        for (int i = 0; i < len; i++) {
+            Serial.print(buf[i], HEX);
+            Serial.print(" ");
+        }
+        Serial.println();
+
+        // Send the MAVLink message
+        Serial2.write(buf, len);
+
+        response = armCommand
+            ? "{\"status\":\"success\",\"message\":\"Drone armed successfully.\"}"
+            : "{\"status\":\"success\",\"message\":\"Drone disarmed successfully.\"}";
+
+        server.send(200, "application/json", response);
+    } else {
+        server.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Missing JSON body.\"}");
+    }
 }
 
-void requestWaypoints() {
-    mavlink_message_t msg;
-    mavlink_msg_mission_request_list_pack(
-        SYSTEM_ID, COMPONENT_ID, &msg,
-        TARGET_SYSTEM_ID, TARGET_COMPONENT_ID
-        , 0 // Add the final argument as required by the function
-    );
+void handleGetReadyToArm() {
+    String response = "{";
+    response += "\"readyToArm\": " + String(readyToArm ? "true" : "false");
+    response += "}";
 
-    uint8_t buffer[MAVLINK_MAX_PACKET_LEN];
-    uint16_t len = mavlink_msg_to_send_buffer(buffer, &msg);
-
-    // Send the serialized message via UART
-    Serial1.write(buffer, len);
-    Serial.println("Mission Request List sent");
+    server.send(200, "application/json", response);
 }
 
