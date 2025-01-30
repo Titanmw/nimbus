@@ -588,7 +588,7 @@ drone_qr_center_label.grid(row=4, column=0)
 drone_qr_center_button = ttk.Button(drone_frame, text="OFF", style="OFF.TButton", command=button_qr_center_toggle)
 drone_qr_center_button.grid(row=4, column=1, padx=10, pady=10)
 
-drone_qr_controlled_label = ttk.Label(drone_frame, text="QR-Code conrolled")
+drone_qr_controlled_label = ttk.Label(drone_frame, text="QR-Code controlled")
 drone_qr_controlled_label.grid(row=5, column=0)
 
 drone_qr_controlled_button = ttk.Button(drone_frame, text="OFF", style="OFF.TButton", command=button_qr_controlled_toggle)
