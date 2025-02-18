@@ -4,7 +4,8 @@ def get_waypoints():
     try:
         # Verbindung zum Fahrzeug herstellen (z.B. via UART oder UDP)
         # master = mavutil.mavlink_connection('COM6', baud=57600)
-        master = mavutil.mavlink_connection('tcp:127.0.0.1:5760', baud=115200)
+        master = mavutil.mavlink_connection('COM13', baud=115200)
+        #master = mavutil.mavlink_connection('tcp:127.0.0.1:5760', baud=115200)
 
         # Auf das erste Herzschlag-Signal warten, um die Verbindung zu bestätigen
         print("Warte auf Verbindung...")

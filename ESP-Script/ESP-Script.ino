@@ -50,6 +50,7 @@ uint8_t rxBuffer[BUFFER_SIZE];
 size_t rxBufferIndex = 0;
 unsigned long lastHeartbeatTime = 0;
 
+
 void setup()
 {
     try
@@ -65,7 +66,6 @@ void setup()
         server.on("/getBattery", HTTP_GET, handleGetBattery);
         server.on("/getWayPoints", HTTP_GET, handleGetWayPoints);
         server.on("/addWayPoint", HTTP_POST, handleAddWayPoint);
-        server.on("/deleteWayPoint", HTTP_DELETE, handleDeleteWayPoint);
         server.on("/deleteAllWaypoints", HTTP_DELETE, handleDeleteAllWaypoints);
         server.begin();
         Serial.println("Web server started");
@@ -147,6 +147,25 @@ void sendHeartbeat()
     }
 }
 
+void sendMAVLinkMessage(mavlink_message_t &msg) {
+    uint8_t buffer[MAVLINK_MAX_PACKET_LEN];
+    uint16_t len = mavlink_msg_to_send_buffer(buffer, &msg);
+    Serial1.write(buffer, len);
+}
+
+bool receiveMAVLinkMessage(mavlink_message_t &msg, uint8_t msg_id) {
+    mavlink_status_t status;
+    while (Serial1.available()) {
+        uint8_t c = Serial1.read();
+        if (mavlink_parse_char(MAVLINK_COMM_0, c, &msg, &status)) {
+            if (msg.msgid == msg_id) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 void requestWaypoints()
 {
     mavlink_message_t msg;
@@ -161,27 +180,6 @@ void requestWaypoints()
     // Send the serialized message via UART
     Serial1.write(buffer, len);
     // Serial.println("Mission Request List sent");
-}
-
-void sendWaypoint(Waypoint wp)
-{
-    mavlink_message_t msg;
-    mavlink_msg_mission_item_int_pack(
-        SYSTEM_ID, COMPONENT_ID, &msg,
-        TARGET_SYSTEM_ID, TARGET_COMPONENT_ID,
-        wp.seq, wp.frame, wp.command,
-        wp.current, wp.autocontinue,
-        wp.param1, wp.param2, wp.param3, wp.param4,
-        (int32_t)(wp.latitude * 1e7),
-        (int32_t)(wp.longitude * 1e7),
-        wp.altitude,
-        wp.mission_type);
-    uint8_t buffer[MAVLINK_MAX_PACKET_LEN];
-    uint16_t len = mavlink_msg_to_send_buffer(buffer, &msg);
-    Serial1.write(buffer, len);
-
-    // Update mission count
-    sendMissionCount();
 }
 
 void sendMissionCount()
@@ -207,7 +205,49 @@ void sendMissionCount()
     Serial1.write(buffer, len);
 }
 
-void deleteWaypoint(uint16_t seq)
+void uploadWaypoints() {
+    Serial.println("Lösche vorhandene Wegpunkte...");
+    mavlink_message_t msg;
+    mavlink_msg_mission_clear_all_pack(SYSTEM_ID, COMPONENT_ID, &msg, TARGET_SYSTEM_ID, TARGET_COMPONENT_ID, 0); // Hier das fehlende Argument hinzufügen
+    sendMAVLinkMessage(msg);
+    delay(500);
+
+    Serial.printf("Sende %d neue Wegpunkte...\n", waypoints.size());
+    mavlink_msg_mission_count_pack(SYSTEM_ID, COMPONENT_ID, &msg, TARGET_SYSTEM_ID, TARGET_COMPONENT_ID, waypoints.size(), 0, 0); // Fehlende Argumente ergänzt
+    sendMAVLinkMessage(msg);
+    delay(500);
+
+    for (const auto& wp : waypoints) {
+        mavlink_message_t wp_msg;
+        mavlink_msg_mission_item_int_pack(SYSTEM_ID, COMPONENT_ID, &wp_msg, TARGET_SYSTEM_ID, TARGET_COMPONENT_ID,
+                                          wp.seq, wp.frame, wp.command, wp.current, wp.autocontinue,
+                                          wp.param1, wp.param2, wp.param3, wp.param4,
+                                          (int32_t)(wp.latitude * 1e7), (int32_t)(wp.longitude * 1e7), wp.altitude, wp.mission_type);
+        sendMAVLinkMessage(wp_msg);
+        delay(500);
+    }
+    Serial.println("Alle neuen Wegpunkte erfolgreich hochgeladen.");
+}
+
+void setMissionMode()
+{
+    mavlink_message_t msg;
+    uint8_t buffer[MAVLINK_MAX_PACKET_LEN];
+
+    mavlink_msg_set_mode_pack(
+        SYSTEM_ID, COMPONENT_ID, &msg,
+        TARGET_SYSTEM_ID,
+        MAV_MODE_GUIDED_ARMED, // Setzt den Mission-Modus
+        0 // Keine spezifische Basis-Modus-Konfiguration
+    );
+
+    uint16_t len = mavlink_msg_to_send_buffer(buffer, &msg);
+    Serial1.write(buffer, len);
+
+    Serial.println("Mission Mode gesetzt");
+}
+
+void deleteAllWaypoints()
 {
     mavlink_message_t msg;
     mavlink_msg_mission_clear_all_pack(
@@ -216,6 +256,9 @@ void deleteWaypoint(uint16_t seq)
     uint8_t buffer[MAVLINK_MAX_PACKET_LEN];
     uint16_t len = mavlink_msg_to_send_buffer(buffer, &msg);
     Serial1.write(buffer, len);
+
+    // Lokale Waypoints-Liste ebenfalls leeren
+    waypoints.clear();
 }
 
 void checkForIncomingMessages()
@@ -415,39 +458,42 @@ void handleAddWayPoint()
     if (server.hasArg("plain"))
     {
         StaticJsonDocument<200> doc;
-        deserializeJson(doc, server.arg("plain"));
+        DeserializationError error = deserializeJson(doc, server.arg("plain"));
 
-        uint16_t newSeq = 0;
-        if (doc.containsKey("seq"))
+        if (error)
         {
-            newSeq = (uint16_t)doc["seq"];
+            server.send(400, "application/json", "{\"error\": \"Invalid JSON\"}");
+            return;
         }
-        else
-        {
-            // Recalculate the sequence number based on the current size of waypoints
-            newSeq = waypoints.size();
-            if (newSeq < 0)
-            {
-                newSeq = 0;
-            }
-        }
+
+        Serial.println("Neue Wegpunktdaten empfangen:");
+        Serial.print("Latitude: ");
+        Serial.println(doc["latitude"].as<float>(), 7);
+        Serial.print("Longitude: ");
+        Serial.println(doc["longitude"].as<float>(), 7);
+        Serial.print("Altitude: ");
+        Serial.println(doc["altitude"].as<float>(), 2);
+        Serial.print("Command: ");
+        Serial.println((uint16_t)doc["command"]);
+
+        // Neuen Waypoint lokal speichern
+        uint16_t newSeq = waypoints.empty() ? 0 : waypoints.back().seq + 1;
+
         Waypoint wp = {
             newSeq,
-            doc.containsKey("frame") ? (uint8_t)doc["frame"] : MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,
+            MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,
             (uint16_t)doc["command"],
-            (uint8_t)doc["current"],
-            (uint8_t)doc["autocontinue"],
-            (float)doc["param1"],
-            (float)doc["param2"],
-            (float)doc["param3"],
-            (float)doc["param4"],
+            0,  // current (0 = nicht aktiv)
+            1,  // autocontinue
+            0.0, 0.0, 0.0, 0.0,
             (float)doc["latitude"],
             (float)doc["longitude"],
             (float)doc["altitude"],
-            (uint8_t)doc["mission_type"]};
-        waypoints.push_back(wp);
-        sendWaypoint(wp);
-        sendMissionCount();
+            0};
+
+        waypoints.push_back(wp); // Speichern des neuen Waypoints
+
+        uploadWaypoints();
 
         server.send(200, "application/json", "{\"status\": \"Waypoint added\"}");
     }
@@ -457,60 +503,10 @@ void handleAddWayPoint()
     }
 }
 
-void handleDeleteWayPoint()
-{
-    if (server.hasArg("plain"))
-    {
-        StaticJsonDocument<200> doc;
-        DeserializationError error = deserializeJson(doc, server.arg("plain"));
-        if (error)
-        {
-            server.send(400, "application/json", "{\"error\": \"Invalid JSON\"}");
-            return;
-        }
-
-        uint16_t seq = (uint16_t)doc["seq"];
-        Serial.print("Deleting waypoint with seq: ");
-        Serial.println(seq);
-
-        mavlink_message_t msg;
-        mavlink_msg_mission_request_pack(
-            SYSTEM_ID, COMPONENT_ID, &msg,
-            TARGET_SYSTEM_ID, TARGET_COMPONENT_ID, seq, 0);
-        uint8_t buffer[MAVLINK_MAX_PACKET_LEN];
-        uint16_t len = mavlink_msg_to_send_buffer(buffer, &msg);
-        Serial1.write(buffer, len);
-
-        auto it = std::remove_if(waypoints.begin(), waypoints.end(), [seq](const Waypoint &wp)
-                                 { return wp.seq == seq; });
-        if (it != waypoints.end())
-        {
-            waypoints.erase(it, waypoints.end());
-            server.send(200, "application/json", "{\"status\": \"Waypoint deleted\"}");
-            Serial.println("Waypoint deleted.");
-        }
-        else
-        {
-            server.send(404, "application/json", "{\"error\": \"Waypoint not found\"}");
-            Serial.println("Waypoint not found.");
-        }
-    }
-    else
-    {
-        server.send(400, "application/json", "{\"error\": \"Invalid JSON\"}");
-    }
-}
-
 void handleDeleteAllWaypoints()
 {
-    mavlink_message_t msg;
-    mavlink_msg_mission_clear_all_pack(
-        SYSTEM_ID, COMPONENT_ID, &msg,
-        TARGET_SYSTEM_ID, TARGET_COMPONENT_ID, 0);
-    uint8_t buffer[MAVLINK_MAX_PACKET_LEN];
-    uint16_t len = mavlink_msg_to_send_buffer(buffer, &msg);
-    Serial1.write(buffer, len);
-
     waypoints.clear();
+    deleteAllWaypoints();
+
     server.send(200, "application/json", "{\"status\": \"All waypoints deleted\"}");
 }
