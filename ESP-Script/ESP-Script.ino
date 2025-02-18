@@ -22,9 +22,6 @@
 // UART buffer size
 #define BUFFER_SIZE 1024
 
-// Global variables to store battery status and waypoints
-float batteryVoltage = 0.0;
-float batteryCurrent = 0.0;
 struct Waypoint
 {
     uint16_t seq;         // Reihenfolge-Nummer des Waypoints
@@ -42,6 +39,17 @@ struct Waypoint
     uint8_t mission_type; // Missionstyp (z. B. Standardmission, VTOL, Rover)
 };
 
+// Global variables to store battery status and waypoints
+float batteryVoltage = 0.0;
+float batteryCurrent = 0.0;
+float gpsLatitude = 0.0;
+float gpsLongitude = 0.0;
+float gpsAltitude = 0.0;
+uint8_t droneBaseMode = 0;
+uint8_t droneCustomMode = 0;
+uint8_t droneSystemStatus = 0;
+uint8_t gpsFixType = 0; // GPS-Fix-Status (0 = Kein Fix, 2 = 2D Fix, 3 = 3D Fix)
+uint8_t gpsSatellites = 0; // Anzahl der sichtbaren Satelliten
 std::vector<Waypoint> waypoints;
 
 // WiFi and WebServer
@@ -49,6 +57,7 @@ WebServer server(80);
 uint8_t rxBuffer[BUFFER_SIZE];
 size_t rxBufferIndex = 0;
 unsigned long lastHeartbeatTime = 0;
+unsigned long lastGPSRequestTime = 0;
 
 
 void setup()
@@ -63,10 +72,11 @@ void setup()
 
         // Set up WiFi and start web server
         setupWiFi();
-        server.on("/getBattery", HTTP_GET, handleGetBattery);
         server.on("/getWayPoints", HTTP_GET, handleGetWayPoints);
         server.on("/addWayPoint", HTTP_POST, handleAddWayPoint);
         server.on("/deleteAllWaypoints", HTTP_DELETE, handleDeleteAllWaypoints);
+        server.on("/getStatus", HTTP_GET, handleGetStatus);
+        server.on("/setMode", HTTP_POST, handleSetMode);
         server.begin();
         Serial.println("Web server started");
 
@@ -113,6 +123,12 @@ void loop()
 
             // Request waypoints
             requestWaypoints();
+        }
+
+        if (millis() - lastGPSRequestTime > 5000)
+        {
+            requestGPSData();
+            lastGPSRequestTime = millis();
         }
     }
     catch (const std::exception &e)
@@ -247,6 +263,20 @@ void setMissionMode()
     Serial.println("Mission Mode gesetzt");
 }
 
+void setFlightMode(uint8_t mode)
+{
+    mavlink_message_t msg;
+    mavlink_msg_set_mode_pack(
+        SYSTEM_ID, COMPONENT_ID, &msg,
+        TARGET_SYSTEM_ID, mode, 0 // 0 für Basis-Modus-Konfiguration
+    );
+
+    sendMAVLinkMessage(msg);
+
+    Serial.print("Mode change requested: ");
+    Serial.println(mode);
+}
+
 void deleteAllWaypoints()
 {
     mavlink_message_t msg;
@@ -259,6 +289,111 @@ void deleteAllWaypoints()
 
     // Lokale Waypoints-Liste ebenfalls leeren
     waypoints.clear();
+}
+
+void requestGPSData()
+{
+    mavlink_message_t msg;
+    mavlink_msg_command_long_pack(
+        SYSTEM_ID, COMPONENT_ID, &msg,
+        TARGET_SYSTEM_ID, TARGET_COMPONENT_ID,
+        MAV_CMD_REQUEST_MESSAGE, 0,
+        MAVLINK_MSG_ID_GPS_RAW_INT, 0, 0, 0, 0, 0, 0
+    );
+
+    sendMAVLinkMessage(msg);
+    Serial.println("Requested GPS Data...");
+}
+
+String getFlightModeName(uint8_t baseMode, uint32_t customMode)
+{
+    if (baseMode == 81 || baseMode == 89)  // ArduPilot: 81 = Armed, 89 = Flugsteuerung aktiv
+    {
+        switch (customMode)
+        {
+        case 0: return "STABILIZE";
+        case 1: return "ACRO";
+        case 2: return "ALT_HOLD";
+        case 3: return "AUTO";
+        case 4: return "GUIDED";
+        case 5: return "LOITER";
+        case 6: return "RTL";
+        case 7: return "CIRCLE";
+        case 9: return "LAND";
+        case 11: return "DRIFT";
+        case 13: return "SPORT";
+        case 14: return "FLIP";
+        case 15: return "AUTOTUNE";
+        case 16: return "POSHOLD";
+        case 17: return "BRAKE";
+        case 18: return "THROW";
+        case 19: return "AVOID_ADSB";
+        case 20: return "GUIDED_NOGPS";
+        case 21: return "SMART_RTL";
+        case 22: return "TAKEOFF";
+        case 23: return "QSTABILIZE";
+        case 24: return "QHOVER";
+        case 25: return "QLOITER";
+        case 26: return "QLAND";
+        case 27: return "QRTL";
+        default: return "UNKNOWN";
+        }
+    }
+
+    return "UNKNOWN"; // Falls baseMode nicht bekannt ist
+}
+
+String getSystemStatus(uint8_t status)
+{
+    switch (status)
+    {
+    case MAV_STATE_UNINIT:
+        return "UNINITIALIZED";
+    case MAV_STATE_BOOT:
+        return "BOOT";
+    case MAV_STATE_STANDBY:
+        return "STANDBY";
+    case MAV_STATE_ACTIVE:
+        return "ACTIVE";
+    case MAV_STATE_CRITICAL:
+        return "CRITICAL";
+    case MAV_STATE_EMERGENCY:
+        return "EMERGENCY";
+    default:
+        return "UNKNOWN";
+    }
+}
+
+uint8_t getModeValueFromString(String modeString)
+{
+    if (modeString.equalsIgnoreCase("MANUAL")) return 0;
+    if (modeString.equalsIgnoreCase("CIRCLE")) return 1;
+    if (modeString.equalsIgnoreCase("STABILIZE")) return 2;
+    if (modeString.equalsIgnoreCase("TRAINING")) return 3;
+    if (modeString.equalsIgnoreCase("ACRO")) return 4;
+    if (modeString.equalsIgnoreCase("FBWA")) return 5;
+    if (modeString.equalsIgnoreCase("FBWB")) return 6;
+    if (modeString.equalsIgnoreCase("CRUISE")) return 7;
+    if (modeString.equalsIgnoreCase("AUTO")) return 8;
+    if (modeString.equalsIgnoreCase("RTL")) return 9;
+    if (modeString.equalsIgnoreCase("LOITER")) return 10;
+    if (modeString.equalsIgnoreCase("TAKEOFF")) return 11;
+    if (modeString.equalsIgnoreCase("LAND")) return 12;
+    if (modeString.equalsIgnoreCase("GUIDED")) return 13;
+    if (modeString.equalsIgnoreCase("INITIALIZING")) return 14;
+    if (modeString.equalsIgnoreCase("QSTABILIZE")) return 15;
+    if (modeString.equalsIgnoreCase("QHOVER")) return 16;
+    if (modeString.equalsIgnoreCase("QLOITER")) return 17;
+    if (modeString.equalsIgnoreCase("QLAND")) return 18;
+    if (modeString.equalsIgnoreCase("QRTL")) return 19;
+    if (modeString.equalsIgnoreCase("POSHOLD")) return 20;
+    if (modeString.equalsIgnoreCase("BRAKE")) return 21;
+    if (modeString.equalsIgnoreCase("THROW")) return 22;
+    if (modeString.equalsIgnoreCase("AVOID_ADSB")) return 23;
+    if (modeString.equalsIgnoreCase("GUIDED_NOGPS")) return 24;
+    if (modeString.equalsIgnoreCase("SMART_RTL")) return 25;
+    
+    return 255; // Ungültiger Modus
 }
 
 void checkForIncomingMessages()
@@ -287,111 +422,154 @@ void checkForIncomingMessages()
 
                 switch (msg.msgid)
                 {
-                case MAVLINK_MSG_ID_HEARTBEAT:
-                {
-                    mavlink_heartbeat_t heartbeat;
-                    mavlink_msg_heartbeat_decode(&msg, &heartbeat);
-
-                    // Serial.print("System Status: ");
-                    // Serial.println(heartbeat.system_status); // Aktueller Zustand der Drohne
-                    // Serial.print("Base Mode: ");
-                    // Serial.println(heartbeat.base_mode); // Modus der Drohne
-                    break;
-                }
-
-                case MAVLINK_MSG_ID_BATTERY_STATUS:
-                {
-                    // Serial.println("Battery Status received");
-                    mavlink_battery_status_t battery_status;
-                    mavlink_msg_battery_status_decode(&msg, &battery_status);
-
-                    // Update global variables for voltage and current
-                    if (battery_status.voltages[0] != UINT16_MAX)
+                    case MAVLINK_MSG_ID_COMMAND_ACK:
                     {
-                        batteryVoltage = battery_status.voltages[0] / 1000.0; // Convert mV to V
+                        mavlink_command_ack_t ack;
+                        mavlink_msg_command_ack_decode(&msg, &ack);
+
+                        Serial.print("[ACK] Command ID: ");
+                        Serial.print(ack.command);
+                        Serial.print(" | Result: ");
+                        Serial.println(ack.result == MAV_RESULT_ACCEPTED ? "Accepted ✅" : "Rejected ❌");
+
+                        break;
+                    }
+                    
+                    case MAVLINK_MSG_ID_HEARTBEAT:
+                    {
+                      mavlink_heartbeat_t heartbeat;
+                      mavlink_msg_heartbeat_decode(&msg, &heartbeat);
+
+                      droneCustomMode = heartbeat.custom_mode;
+                      droneBaseMode = heartbeat.base_mode;
+                      droneSystemStatus = heartbeat.system_status;
+
+                      //Serial.print("Drone Mode: ");
+                      //Serial.println(droneBaseMode);
+                      //Serial.print("System Status: ");
+                      //Serial.println(droneSystemStatus);
+                      break;
                     }
 
-                    if (battery_status.current_battery != -1)
+                    case MAVLINK_MSG_ID_GPS_RAW_INT:
                     {
-                        batteryCurrent = battery_status.current_battery / 100.0; // Convert mA to A
+                        mavlink_gps_raw_int_t gps_data;
+                        mavlink_msg_gps_raw_int_decode(&msg, &gps_data);
+
+                        gpsLatitude = gps_data.lat / 1e7;
+                        gpsLongitude = gps_data.lon / 1e7;
+                        gpsAltitude = gps_data.alt / 1000.0;
+                        gpsFixType = gps_data.fix_type;
+                        gpsSatellites = gps_data.satellites_visible;
+
+                        Serial.print("GPS Data - Lat: ");
+                        Serial.print(gpsLatitude, 7);
+                        Serial.print(", Lon: ");
+                        Serial.print(gpsLongitude, 7);
+                        Serial.print(", Alt: ");
+                        Serial.print(gpsAltitude);
+                        Serial.print(", Fix: ");
+                        Serial.print(gpsFixType);
+                        Serial.print(", Satellites: ");
+                        Serial.println(gpsSatellites);
+                        break;
                     }
 
-                    // Serial.print("Voltage (V): ");
-                    // Serial.println(batteryVoltage);
-                    // Serial.print("Current (A): ");
-                    // Serial.println(batteryCurrent);
-                    break;
-                }
 
-                case MAVLINK_MSG_ID_MISSION_ACK:
-                {
-                    Serial.println("MISSION_ACK received!");
-                    Serial.print("ACK details: ");
-                    Serial.print("msgid: ");
-                    Serial.print(msg.msgid);
-                    Serial.print(", sysid: ");
-                    Serial.print(msg.sysid);
-                    Serial.print(", compid: ");
-                    Serial.println(msg.compid);
-                    break;
-                }
 
-                case MAVLINK_MSG_ID_MISSION_COUNT:
-                {
-                    mavlink_mission_count_t mission_count;
-                    mavlink_msg_mission_count_decode(&msg, &mission_count);
-                    // Serial.print("Mission Count: ");
-                    // Serial.println(mission_count.count);
-                    waypoints.clear();
-                    for (uint16_t i = 0; i < mission_count.count; i++)
+                    case MAVLINK_MSG_ID_BATTERY_STATUS:
                     {
-                        mavlink_message_t req_msg;
-                        mavlink_msg_mission_request_int_pack(
-                            SYSTEM_ID, COMPONENT_ID, &req_msg,
-                            TARGET_SYSTEM_ID, TARGET_COMPONENT_ID, i, 0 // Add 0 as last argument
-                        );
-                        uint16_t len = mavlink_msg_to_send_buffer(rxBuffer, &req_msg);
-                        Serial1.write(rxBuffer, len);
+                        // Serial.println("Battery Status received");
+                        mavlink_battery_status_t battery_status;
+                        mavlink_msg_battery_status_decode(&msg, &battery_status);
+
+                        // Update global variables for voltage and current
+                        if (battery_status.voltages[0] != UINT16_MAX)
+                        {
+                            batteryVoltage = battery_status.voltages[0] / 1000.0; // Convert mV to V
+                        }
+
+                        if (battery_status.current_battery != -1)
+                        {
+                            batteryCurrent = battery_status.current_battery / 100.0; // Convert mA to A
+                        }
+
+                        // Serial.print("Voltage (V): ");
+                        // Serial.println(batteryVoltage);
+                        // Serial.print("Current (A): ");
+                        // Serial.println(batteryCurrent);
+                        break;
                     }
-                    break;
-                }
 
-                case MAVLINK_MSG_ID_MISSION_ITEM_INT:
-                {
-                    mavlink_mission_item_int_t mission_item;
-                    mavlink_msg_mission_item_int_decode(&msg, &mission_item);
+                    case MAVLINK_MSG_ID_MISSION_ACK:
+                    {
+                        Serial.println("MISSION_ACK received!");
+                        Serial.print("ACK details: ");
+                        Serial.print("msgid: ");
+                        Serial.print(msg.msgid);
+                        Serial.print(", sysid: ");
+                        Serial.print(msg.sysid);
+                        Serial.print(", compid: ");
+                        Serial.println(msg.compid);
+                        break;
+                    }
 
-                    Serial.print("Waypoint received - Seq: ");
-                    Serial.print(mission_item.seq);
-                    Serial.print(", Lat: ");
-                    Serial.print(mission_item.x / 1e7, 7);
-                    Serial.print(", Lon: ");
-                    Serial.print(mission_item.y / 1e7, 7);
-                    Serial.print(", Alt: ");
-                    Serial.println(mission_item.z);
+                    case MAVLINK_MSG_ID_MISSION_COUNT:
+                    {
+                        mavlink_mission_count_t mission_count;
+                        mavlink_msg_mission_count_decode(&msg, &mission_count);
+                        // Serial.print("Mission Count: ");
+                        // Serial.println(mission_count.count);
+                        waypoints.clear();
+                        for (uint16_t i = 0; i < mission_count.count; i++)
+                        {
+                            mavlink_message_t req_msg;
+                            mavlink_msg_mission_request_int_pack(
+                                SYSTEM_ID, COMPONENT_ID, &req_msg,
+                                TARGET_SYSTEM_ID, TARGET_COMPONENT_ID, i, 0 // Add 0 as last argument
+                            );
+                            uint16_t len = mavlink_msg_to_send_buffer(rxBuffer, &req_msg);
+                            Serial1.write(rxBuffer, len);
+                        }
+                        break;
+                    }
 
-                    Waypoint wp = {
-                        mission_item.seq,
-                        mission_item.frame,
-                        mission_item.command,
-                        mission_item.current,
-                        mission_item.autocontinue,
-                        mission_item.param1,
-                        mission_item.param2,
-                        mission_item.param3,
-                        mission_item.param4,
-                        mission_item.x / 1e7,
-                        mission_item.y / 1e7,
-                        mission_item.z,
-                        mission_item.mission_type};
-                    waypoints.push_back(wp);
-                    break;
-                }
+                    case MAVLINK_MSG_ID_MISSION_ITEM_INT:
+                    {
+                        mavlink_mission_item_int_t mission_item;
+                        mavlink_msg_mission_item_int_decode(&msg, &mission_item);
 
-                default:
-                    // Serial.print("Unhandled message ID: ");
-                    // Serial.println(msg.msgid);
-                    break;
+                        Serial.print("Waypoint received - Seq: ");
+                        Serial.print(mission_item.seq);
+                        Serial.print(", Lat: ");
+                        Serial.print(mission_item.x / 1e7, 7);
+                        Serial.print(", Lon: ");
+                        Serial.print(mission_item.y / 1e7, 7);
+                        Serial.print(", Alt: ");
+                        Serial.println(mission_item.z);
+
+                        Waypoint wp = {
+                            mission_item.seq,
+                            mission_item.frame,
+                            mission_item.command,
+                            mission_item.current,
+                            mission_item.autocontinue,
+                            mission_item.param1,
+                            mission_item.param2,
+                            mission_item.param3,
+                            mission_item.param4,
+                            mission_item.x / 1e7,
+                            mission_item.y / 1e7,
+                            mission_item.z,
+                            mission_item.mission_type};
+                        waypoints.push_back(wp);
+                        break;
+                    }
+
+                    default:
+                        //Serial.print("Unhandled message ID: ");
+                        //Serial.println(msg.msgid);
+                        break;
                 }
             }
         }
@@ -401,16 +579,6 @@ void checkForIncomingMessages()
         Serial.println("Error checking incoming messages: ");
         Serial.println(e.what());
     }
-}
-
-void handleGetBattery()
-{
-    String response = "{";
-    response += "\"voltage\": " + String(batteryVoltage, 2) + ", ";
-    response += "\"current\": " + String(batteryCurrent, 2);
-    response += "}";
-
-    server.send(200, "application/json", response);
 }
 
 void handleGetWayPoints()
@@ -509,4 +677,71 @@ void handleDeleteAllWaypoints()
     deleteAllWaypoints();
 
     server.send(200, "application/json", "{\"status\": \"All waypoints deleted\"}");
+}
+
+void handleGetStatus()
+{
+    StaticJsonDocument<256> doc;
+    
+    // Batterie-Daten
+    doc["voltage"] = batteryVoltage;
+    doc["current"] = batteryCurrent;
+
+    // GPS-Daten
+    doc["latitude"] = gpsLatitude;
+    doc["longitude"] = gpsLongitude;
+    doc["altitude"] = gpsAltitude;
+    doc["gps_fix"] = gpsFixType;
+    doc["satellites"] = gpsSatellites;
+
+    // Flugmodus & Systemstatus
+    doc["mode"] = getFlightModeName(droneBaseMode, droneCustomMode);
+    doc["base_mode"] = droneBaseMode;  // Roher base_mode-Wert
+    doc["custom_mode"] = droneCustomMode;  // Roher custom_mode-Wert
+    
+    doc["system_status"] = getSystemStatus(droneSystemStatus);
+
+    String response;
+    serializeJson(doc, response);
+    server.send(200, "application/json", response);
+}
+
+void handleSetMode()
+{
+    if (server.hasArg("plain"))
+    {
+        StaticJsonDocument<200> doc;
+        DeserializationError error = deserializeJson(doc, server.arg("plain"));
+
+        if (error)
+        {
+            server.send(400, "application/json", "{\"error\": \"Invalid JSON\"}");
+            return;
+        }
+
+        String modeString = doc["mode"].as<String>();
+        uint8_t modeValue = getModeValueFromString(modeString);
+
+        if (modeValue == 255)
+        {
+            server.send(400, "application/json", "{\"error\": \"Invalid mode\"}");
+            return;
+        }
+
+        // Modus setzen
+        setFlightMode(modeValue);
+
+        // Antwort senden
+        StaticJsonDocument<128> response;
+        response["status"] = "Mode change requested";
+        response["mode"] = modeString;
+
+        String responseString;
+        serializeJson(response, responseString);
+        server.send(200, "application/json", responseString);
+    }
+    else
+    {
+        server.send(400, "application/json", "{\"error\": \"Invalid request\"}");
+    }
 }
