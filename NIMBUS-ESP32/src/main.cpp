@@ -4,13 +4,19 @@
 #include <WebServer.h>
 #include <ArduinoJson.h>
 
+// Camera Definition
+#define CAMERA_MODEL_AI_THINKER // Has PSRAM
+#define LED_LEDC_GPIO 33        // configure LED pin
+#define CONFIG_LED_MAX_INTENSITY 255
+
+#include "esp_camera.h"
+#include "camera_pins.h"
+
 // UART Pins
-#define RX_PIN 4
-#define TX_PIN 5
 #define BAUD_RATE 57600
 
 // MAVLink System ID
-#define SYSTEM_ID 69
+#define SYSTEM_ID 70
 #define COMPONENT_ID 1
 #define TARGET_SYSTEM_ID 0
 #define TARGET_COMPONENT_ID 1
@@ -59,82 +65,40 @@ size_t rxBufferIndex = 0;
 unsigned long lastHeartbeatTime = 0;
 unsigned long lastGPSRequestTime = 0;
 
-void setup()
+int led_duty = 0;
+
+void setupLedFlash(int pin)
 {
-  try
-  {
-    // Initialize Serial1 for MAVLink communication
-    Serial1.begin(BAUD_RATE, SERIAL_8N1, RX_PIN, TX_PIN);
-    Serial.begin(115200); // For debugging
+#if CONFIG_LED_ILLUMINATOR_ENABLED
+  // ledcAttach(pin, 5000, 8);
 
-    Serial.println("ESP32-S3 MAVLink with WebServer - Starting");
+  ledcSetup(0, 5000, 8); // Kanal 0, Frequenz 5000 Hz, 8 Bit Auflösung
+  ledcAttachPin(pin, 0); // Pin an Kanal 0 anhängen
 
-    // Set up WiFi and start web server
-    setupWiFi();
-    server.on("/getWayPoints", HTTP_GET, handleGetWayPoints);
-    server.on("/addWayPoint", HTTP_POST, handleAddWayPoint);
-    server.on("/deleteAllWaypoints", HTTP_DELETE, handleDeleteAllWaypoints);
-    server.on("/getStatus", HTTP_GET, handleGetStatus);
-    server.on("/setMode", HTTP_POST, handleSetMode);
-    server.begin();
-    Serial.println("Web server started");
+#else
+  log_i("LED flash is disabled -> CONFIG_LED_ILLUMINATOR_ENABLED = 0");
+#endif
+}
 
-    // Request waypoints at startup
-    requestWaypoints();
-  }
-  catch (const std::exception &e)
-  {
-    Serial.println("Error initializing MAVLink communication: ");
-    Serial.println(e.what());
-  }
+void enable_led(bool en)
+{ // Turn LED On or Off
+  int duty = en ? CONFIG_LED_MAX_INTENSITY : 0;
+  ledcWrite(LED_LEDC_GPIO, duty);
 }
 
 void setupWiFi()
 {
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD); // WLAN-SSID und Passwort
 
-  Serial.println("Connecting to WiFi...");
+  // Serial.println("Connecting to WiFi...");
   while (WiFi.status() != WL_CONNECTED)
   {
     delay(1000);
-    Serial.print(".");
+    // Serial.print(".");
   }
-  Serial.println("\nWiFi connected");
-  Serial.print("IP Address: ");
-  Serial.println(WiFi.localIP()); // Zeigt die lokale IP-Adresse des ESP32 im Netzwerk an
-}
-
-void loop()
-{
-  try
-  {
-    // Handle HTTP requests
-    server.handleClient();
-
-    // Check for incoming MAVLink messages continuously
-    checkForIncomingMessages();
-
-    // Send a MAVLink Heartbeat message every second
-    if (millis() - lastHeartbeatTime >= 10000)
-    {
-      sendHeartbeat();
-      lastHeartbeatTime = millis();
-
-      // Request waypoints
-      requestWaypoints();
-    }
-
-    if (millis() - lastGPSRequestTime > 5000)
-    {
-      requestGPSData();
-      lastGPSRequestTime = millis();
-    }
-  }
-  catch (const std::exception &e)
-  {
-    Serial.println("Error in MAVLink loop: ");
-    Serial.println(e.what());
-  }
+  // Serial.println("\nWiFi connected");
+  // Serial.print("IP Address: ");
+  // Serial.println(WiFi.localIP()); // Zeigt die lokale IP-Adresse des ESP32 im Netzwerk an
 }
 
 void sendHeartbeat()
@@ -153,12 +117,12 @@ void sendHeartbeat()
     uint16_t len = mavlink_msg_to_send_buffer(buffer, &msg);
 
     // Send the serialized message via UART
-    Serial1.write(buffer, len);
+    Serial.write(buffer, len);
   }
   catch (const std::exception &e)
   {
-    Serial.println("Error sending Heartbeat: ");
-    Serial.println(e.what());
+    // Serial.println("Error sending Heartbeat: ");
+    // Serial.println(e.what());
   }
 }
 
@@ -166,15 +130,15 @@ void sendMAVLinkMessage(mavlink_message_t &msg)
 {
   uint8_t buffer[MAVLINK_MAX_PACKET_LEN];
   uint16_t len = mavlink_msg_to_send_buffer(buffer, &msg);
-  Serial1.write(buffer, len);
+  Serial.write(buffer, len);
 }
 
 bool receiveMAVLinkMessage(mavlink_message_t &msg, uint8_t msg_id)
 {
   mavlink_status_t status;
-  while (Serial1.available())
+  while (Serial.available())
   {
-    uint8_t c = Serial1.read();
+    uint8_t c = Serial.read();
     if (mavlink_parse_char(MAVLINK_COMM_0, c, &msg, &status))
     {
       if (msg.msgid == msg_id)
@@ -198,8 +162,8 @@ void requestWaypoints()
   uint16_t len = mavlink_msg_to_send_buffer(buffer, &msg);
 
   // Send the serialized message via UART
-  Serial1.write(buffer, len);
-  // Serial.println("Mission Request List sent");
+  Serial.write(buffer, len);
+  // //Serial.println("Mission Request List sent");
 }
 
 void sendMissionCount()
@@ -222,18 +186,18 @@ void sendMissionCount()
 
   uint8_t buffer[MAVLINK_MAX_PACKET_LEN];
   uint16_t len = mavlink_msg_to_send_buffer(buffer, &msg);
-  Serial1.write(buffer, len);
+  Serial.write(buffer, len);
 }
 
 void uploadWaypoints()
 {
-  Serial.println("Lösche vorhandene Wegpunkte...");
+  // Serial.println("Lösche vorhandene Wegpunkte...");
   mavlink_message_t msg;
   mavlink_msg_mission_clear_all_pack(SYSTEM_ID, COMPONENT_ID, &msg, TARGET_SYSTEM_ID, TARGET_COMPONENT_ID, 0); // Hier das fehlende Argument hinzufügen
   sendMAVLinkMessage(msg);
   delay(500);
 
-  Serial.printf("Sende %d neue Wegpunkte...\n", waypoints.size());
+  // Serial.printf("Sende %d neue Wegpunkte...\n", waypoints.size());
   mavlink_msg_mission_count_pack(SYSTEM_ID, COMPONENT_ID, &msg, TARGET_SYSTEM_ID, TARGET_COMPONENT_ID, waypoints.size(), 0, 0); // Fehlende Argumente ergänzt
   sendMAVLinkMessage(msg);
   delay(500);
@@ -248,7 +212,7 @@ void uploadWaypoints()
     sendMAVLinkMessage(wp_msg);
     delay(500);
   }
-  Serial.println("Alle neuen Wegpunkte erfolgreich hochgeladen.");
+  // Serial.println("Alle neuen Wegpunkte erfolgreich hochgeladen.");
 }
 
 void setMissionMode()
@@ -264,9 +228,9 @@ void setMissionMode()
   );
 
   uint16_t len = mavlink_msg_to_send_buffer(buffer, &msg);
-  Serial1.write(buffer, len);
+  Serial.write(buffer, len);
 
-  Serial.println("Mission Mode gesetzt");
+  // Serial.println("Mission Mode gesetzt");
 }
 
 void setFlightMode(uint8_t mode)
@@ -279,8 +243,8 @@ void setFlightMode(uint8_t mode)
 
   sendMAVLinkMessage(msg);
 
-  Serial.print("Mode change requested: ");
-  Serial.println(mode);
+  // Serial.print("Mode change requested: ");
+  // Serial.println(mode);
 }
 
 void deleteAllWaypoints()
@@ -291,7 +255,7 @@ void deleteAllWaypoints()
       TARGET_SYSTEM_ID, TARGET_COMPONENT_ID, 0);
   uint8_t buffer[MAVLINK_MAX_PACKET_LEN];
   uint16_t len = mavlink_msg_to_send_buffer(buffer, &msg);
-  Serial1.write(buffer, len);
+  Serial.write(buffer, len);
 
   // Lokale Waypoints-Liste ebenfalls leeren
   waypoints.clear();
@@ -307,7 +271,7 @@ void requestGPSData()
       MAVLINK_MSG_ID_GPS_RAW_INT, 0, 0, 0, 0, 0, 0);
 
   sendMAVLinkMessage(msg);
-  Serial.println("Requested GPS Data...");
+  // Serial.println("Requested GPS Data...");
 }
 
 String getFlightModeName(uint8_t baseMode, uint32_t customMode)
@@ -457,9 +421,9 @@ void checkForIncomingMessages()
 {
   try
   {
-    while (Serial1.available())
+    while (Serial.available())
     {
-      uint8_t c = Serial1.read();
+      uint8_t c = Serial.read();
       rxBuffer[rxBufferIndex++] = c;
 
       if (rxBufferIndex >= BUFFER_SIZE)
@@ -473,9 +437,9 @@ void checkForIncomingMessages()
       // Try to decode a MAVLink message
       if (mavlink_parse_char(MAVLINK_COMM_0, c, &msg, &status))
       {
-        // Serial.println("MAVLink message received!");
-        // Serial.print("Message ID: ");
-        // Serial.println(msg.msgid);
+        // //Serial.println("MAVLink message received!");
+        // //Serial.print("Message ID: ");
+        // //Serial.println(msg.msgid);
 
         switch (msg.msgid)
         {
@@ -484,10 +448,10 @@ void checkForIncomingMessages()
           mavlink_command_ack_t ack;
           mavlink_msg_command_ack_decode(&msg, &ack);
 
-          Serial.print("[ACK] Command ID: ");
-          Serial.print(ack.command);
-          Serial.print(" | Result: ");
-          Serial.println(ack.result == MAV_RESULT_ACCEPTED ? "Accepted ✅" : "Rejected ❌");
+          // Serial.print("[ACK] Command ID: ");
+          // Serial.print(ack.command);
+          // Serial.print(" | Result: ");
+          // Serial.println(ack.result == MAV_RESULT_ACCEPTED ? "Accepted ✅" : "Rejected ❌");
 
           break;
         }
@@ -501,10 +465,10 @@ void checkForIncomingMessages()
           droneBaseMode = heartbeat.base_mode;
           droneSystemStatus = heartbeat.system_status;
 
-          // Serial.print("Drone Mode: ");
-          // Serial.println(droneBaseMode);
-          // Serial.print("System Status: ");
-          // Serial.println(droneSystemStatus);
+          // //Serial.print("Drone Mode: ");
+          // //Serial.println(droneBaseMode);
+          // //Serial.print("System Status: ");
+          // //Serial.println(droneSystemStatus);
           break;
         }
 
@@ -519,22 +483,22 @@ void checkForIncomingMessages()
           gpsFixType = gps_data.fix_type;
           gpsSatellites = gps_data.satellites_visible;
 
-          Serial.print("GPS Data - Lat: ");
-          Serial.print(gpsLatitude, 7);
-          Serial.print(", Lon: ");
-          Serial.print(gpsLongitude, 7);
-          Serial.print(", Alt: ");
-          Serial.print(gpsAltitude);
-          Serial.print(", Fix: ");
-          Serial.print(gpsFixType);
-          Serial.print(", Satellites: ");
-          Serial.println(gpsSatellites);
+          // Serial.print("GPS Data - Lat: ");
+          // Serial.print(gpsLatitude, 7);
+          // Serial.print(", Lon: ");
+          // Serial.print(gpsLongitude, 7);
+          // Serial.print(", Alt: ");
+          // Serial.print(gpsAltitude);
+          // Serial.print(", Fix: ");
+          // Serial.print(gpsFixType);
+          // Serial.print(", Satellites: ");
+          // Serial.println(gpsSatellites);
           break;
         }
 
         case MAVLINK_MSG_ID_BATTERY_STATUS:
         {
-          // Serial.println("Battery Status received");
+          // //Serial.println("Battery Status received");
           mavlink_battery_status_t battery_status;
           mavlink_msg_battery_status_decode(&msg, &battery_status);
 
@@ -549,23 +513,23 @@ void checkForIncomingMessages()
             batteryCurrent = battery_status.current_battery / 100.0; // Convert mA to A
           }
 
-          // Serial.print("Voltage (V): ");
-          // Serial.println(batteryVoltage);
-          // Serial.print("Current (A): ");
-          // Serial.println(batteryCurrent);
+          // //Serial.print("Voltage (V): ");
+          // //Serial.println(batteryVoltage);
+          // //Serial.print("Current (A): ");
+          // //Serial.println(batteryCurrent);
           break;
         }
 
         case MAVLINK_MSG_ID_MISSION_ACK:
         {
-          Serial.println("MISSION_ACK received!");
-          Serial.print("ACK details: ");
-          Serial.print("msgid: ");
-          Serial.print(msg.msgid);
-          Serial.print(", sysid: ");
-          Serial.print(msg.sysid);
-          Serial.print(", compid: ");
-          Serial.println(msg.compid);
+          // Serial.println("MISSION_ACK received!");
+          // Serial.print("ACK details: ");
+          // Serial.print("msgid: ");
+          // Serial.print(msg.msgid);
+          // Serial.print(", sysid: ");
+          // Serial.print(msg.sysid);
+          // Serial.print(", compid: ");
+          // Serial.println(msg.compid);
           break;
         }
 
@@ -573,8 +537,8 @@ void checkForIncomingMessages()
         {
           mavlink_mission_count_t mission_count;
           mavlink_msg_mission_count_decode(&msg, &mission_count);
-          // Serial.print("Mission Count: ");
-          // Serial.println(mission_count.count);
+          // //Serial.print("Mission Count: ");
+          // //Serial.println(mission_count.count);
           waypoints.clear();
           for (uint16_t i = 0; i < mission_count.count; i++)
           {
@@ -584,7 +548,7 @@ void checkForIncomingMessages()
                 TARGET_SYSTEM_ID, TARGET_COMPONENT_ID, i, 0 // Add 0 as last argument
             );
             uint16_t len = mavlink_msg_to_send_buffer(rxBuffer, &req_msg);
-            Serial1.write(rxBuffer, len);
+            Serial.write(rxBuffer, len);
           }
           break;
         }
@@ -594,14 +558,14 @@ void checkForIncomingMessages()
           mavlink_mission_item_int_t mission_item;
           mavlink_msg_mission_item_int_decode(&msg, &mission_item);
 
-          Serial.print("Waypoint received - Seq: ");
-          Serial.print(mission_item.seq);
-          Serial.print(", Lat: ");
-          Serial.print(mission_item.x / 1e7, 7);
-          Serial.print(", Lon: ");
-          Serial.print(mission_item.y / 1e7, 7);
-          Serial.print(", Alt: ");
-          Serial.println(mission_item.z);
+          // Serial.print("Waypoint received - Seq: ");
+          // Serial.print(mission_item.seq);
+          // Serial.print(", Lat: ");
+          // Serial.print(mission_item.x / 1e7, 7);
+          // Serial.print(", Lon: ");
+          // Serial.print(mission_item.y / 1e7, 7);
+          // Serial.print(", Alt: ");
+          // Serial.println(mission_item.z);
 
           Waypoint wp = {
               mission_item.seq,
@@ -622,8 +586,8 @@ void checkForIncomingMessages()
         }
 
         default:
-          // Serial.print("Unhandled message ID: ");
-          // Serial.println(msg.msgid);
+          // //Serial.print("Unhandled message ID: ");
+          // //Serial.println(msg.msgid);
           break;
         }
       }
@@ -631,15 +595,15 @@ void checkForIncomingMessages()
   }
   catch (const std::exception &e)
   {
-    Serial.println("Error checking incoming messages: ");
-    Serial.println(e.what());
+    // Serial.println("Error checking incoming messages: ");
+    // Serial.println(e.what());
   }
 }
 
 void handleGetWayPoints()
 {
-  Serial.print("Sending waypoints, count: ");
-  Serial.println(waypoints.size());
+  // Serial.print("Sending waypoints, count: ");
+  // Serial.println(waypoints.size());
 
   StaticJsonDocument<2048> doc;
   JsonArray array = doc.to<JsonArray>();
@@ -661,14 +625,14 @@ void handleGetWayPoints()
     obj["altitude"] = wp.altitude;
     obj["mission_type"] = wp.mission_type;
 
-    Serial.print("Seq: ");
-    Serial.print(wp.seq);
-    Serial.print(", Lat: ");
-    Serial.print(wp.latitude, 7);
-    Serial.print(", Lon: ");
-    Serial.print(wp.longitude, 7);
-    Serial.print(", Alt: ");
-    Serial.println(wp.altitude);
+    // Serial.print("Seq: ");
+    // Serial.print(wp.seq);
+    // Serial.print(", Lat: ");
+    // Serial.print(wp.latitude, 7);
+    // Serial.print(", Lon: ");
+    // Serial.print(wp.longitude, 7);
+    // Serial.print(", Alt: ");
+    // Serial.println(wp.altitude);
   }
 
   String response;
@@ -689,15 +653,15 @@ void handleAddWayPoint()
       return;
     }
 
-    Serial.println("Neue Wegpunktdaten empfangen:");
-    Serial.print("Latitude: ");
-    Serial.println(doc["latitude"].as<float>(), 7);
-    Serial.print("Longitude: ");
-    Serial.println(doc["longitude"].as<float>(), 7);
-    Serial.print("Altitude: ");
-    Serial.println(doc["altitude"].as<float>(), 2);
-    Serial.print("Command: ");
-    Serial.println((uint16_t)doc["command"]);
+    // Serial.println("Neue Wegpunktdaten empfangen:");
+    // Serial.print("Latitude: ");
+    // Serial.println(doc["latitude"].as<float>(), 7);
+    // Serial.print("Longitude: ");
+    // Serial.println(doc["longitude"].as<float>(), 7);
+    // Serial.print("Altitude: ");
+    // Serial.println(doc["altitude"].as<float>(), 2);
+    // Serial.print("Command: ");
+    // Serial.println((uint16_t)doc["command"]);
 
     // Neuen Waypoint lokal speichern
     uint16_t newSeq = waypoints.empty() ? 0 : waypoints.back().seq + 1;
@@ -798,5 +762,199 @@ void handleSetMode()
   else
   {
     server.send(400, "application/json", "{\"error\": \"Invalid request\"}");
+  }
+}
+
+void handleCaptureCamera()
+{
+  sensor_t *s = esp_camera_sensor_get();
+  s->set_framesize(s, FRAMESIZE_SVGA);
+
+  // Optional: Bildhelligkeit, Kontrast, Sättigung
+  s->set_brightness(s, 1); // -2 bis 2
+  s->set_contrast(s, 1);   // -2 bis 2
+  s->set_saturation(s, 1); // -2 bis 2
+
+  // Optional: Auto Belichtung & Belichtungszeit
+  s->set_exposure_ctrl(s, 1); // 0 = aus, 1 = an
+  s->set_gain_ctrl(s, 1);     // Auto-Gain
+  s->set_awb_gain(s, 1);      // Auto-White-Balance
+
+  camera_fb_t *fb = esp_camera_fb_get();
+  if (!fb)
+  {
+    server.send(500, "text/plain", "Camera capture failed");
+    return;
+  }
+
+  server.sendHeader("Content-Type", "image/jpeg");
+  server.send_P(200, "image/jpeg", (char *)fb->buf, fb->len);
+  esp_camera_fb_return(fb);
+
+  enable_led(true);
+}
+
+void initCamera()
+{
+  camera_config_t config;
+  config.ledc_channel = LEDC_CHANNEL_0;
+  config.ledc_timer = LEDC_TIMER_0;
+  config.pin_d0 = Y2_GPIO_NUM;
+  config.pin_d1 = Y3_GPIO_NUM;
+  config.pin_d2 = Y4_GPIO_NUM;
+  config.pin_d3 = Y5_GPIO_NUM;
+  config.pin_d4 = Y6_GPIO_NUM;
+  config.pin_d5 = Y7_GPIO_NUM;
+  config.pin_d6 = Y8_GPIO_NUM;
+  config.pin_d7 = Y9_GPIO_NUM;
+  config.pin_xclk = XCLK_GPIO_NUM;
+  config.pin_pclk = PCLK_GPIO_NUM;
+  config.pin_vsync = VSYNC_GPIO_NUM;
+  config.pin_href = HREF_GPIO_NUM;
+  config.pin_sccb_sda = SIOD_GPIO_NUM;
+  config.pin_sccb_scl = SIOC_GPIO_NUM;
+  config.pin_pwdn = PWDN_GPIO_NUM;
+  config.pin_reset = RESET_GPIO_NUM;
+  config.xclk_freq_hz = 20000000;
+  config.pixel_format = PIXFORMAT_JPEG; // for streaming
+  // config.pixel_format = PIXFORMAT_RGB565; // for face detection/recognition
+  config.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
+  config.fb_location = CAMERA_FB_IN_PSRAM;
+  config.frame_size = FRAMESIZE_SVGA;
+  config.jpeg_quality = 12;
+  config.fb_count = 2;
+
+  // if PSRAM IC present, init with UXGA resolution and higher JPEG quality
+  //                      for larger pre-allocated frame buffer.
+  if (config.pixel_format == PIXFORMAT_JPEG)
+  {
+    if (psramFound())
+    {
+      config.jpeg_quality = 10;
+      config.fb_count = 2;
+      config.grab_mode = CAMERA_GRAB_LATEST;
+    }
+    else
+    {
+      // Limit the frame size when PSRAM is not available
+      config.frame_size = FRAMESIZE_SVGA;
+      config.fb_location = CAMERA_FB_IN_DRAM;
+    }
+  }
+  else
+  {
+    // Best option for face detection/recognition
+    config.frame_size = FRAMESIZE_240X240;
+#if CONFIG_IDF_TARGET_ESP32S3
+    config.fb_count = 2;
+#endif
+  }
+
+#if defined(CAMERA_MODEL_ESP_EYE)
+  pinMode(13, INPUT_PULLUP);
+  pinMode(14, INPUT_PULLUP);
+#endif
+
+  // camera init
+  esp_err_t err = esp_camera_init(&config);
+  if (err != ESP_OK)
+  {
+    // Serial.printf("Camera init failed with error 0x%x", err);
+    return;
+  }
+
+  sensor_t *s = esp_camera_sensor_get();
+  // initial sensors are flipped vertically and colors are a bit saturated
+  if (s->id.PID == OV3660_PID)
+  {
+    s->set_vflip(s, 1);       // flip it back
+    s->set_brightness(s, 1);  // up the brightness just a bit
+    s->set_saturation(s, -2); // lower the saturation
+  }
+  // drop down frame size for higher initial frame rate
+  if (config.pixel_format == PIXFORMAT_JPEG)
+  {
+    s->set_framesize(s, FRAMESIZE_QVGA);
+  }
+
+#if defined(CAMERA_MODEL_M5STACK_WIDE) || defined(CAMERA_MODEL_M5STACK_ESP32CAM)
+  s->set_vflip(s, 1);
+  s->set_hmirror(s, 1);
+#endif
+
+#if defined(CAMERA_MODEL_ESP32S3_EYE)
+  s->set_vflip(s, 1);
+#endif
+
+// Setup LED FLash if LED pin is defined in camera_pins.h
+#if defined(LED_GPIO_NUM)
+  setupLedFlash(LED_GPIO_NUM);
+#endif
+}
+
+void setup()
+{
+  try
+  {
+    // Initialize Serial1 for MAVLink communication
+    // Serial.begin(BAUD_RATE, SERIAL_8N1, RX_PIN, TX_PIN);
+    Serial.begin(BAUD_RATE);
+    // Serial.begin(115200); // For debugging
+
+    // Serial.println("ESP32-S3 MAVLink with WebServer - Starting");
+
+    // Set up WiFi and start web server
+    initCamera();
+
+    setupWiFi();
+    server.on("/camera", HTTP_GET, handleCaptureCamera);
+    server.on("/getWayPoints", HTTP_GET, handleGetWayPoints);
+    server.on("/addWayPoint", HTTP_POST, handleAddWayPoint);
+    server.on("/deleteAllWaypoints", HTTP_DELETE, handleDeleteAllWaypoints);
+    server.on("/getStatus", HTTP_GET, handleGetStatus);
+    server.on("/setMode", HTTP_POST, handleSetMode);
+    server.begin();
+    // Serial.println("Web server started");
+
+    // Request waypoints at startup
+    requestWaypoints();
+  }
+  catch (const std::exception &e)
+  {
+    // Serial.println("Error initializing MAVLink communication: ");
+    // Serial.println(e.what());
+  }
+}
+
+void loop()
+{
+  try
+  {
+    // Handle HTTP requests
+    server.handleClient();
+
+    // Check for incoming MAVLink messages continuously
+    checkForIncomingMessages();
+
+    // Send a MAVLink Heartbeat message every second
+    if (millis() - lastHeartbeatTime >= 10000)
+    {
+      sendHeartbeat();
+      lastHeartbeatTime = millis();
+
+      // Request waypoints
+      requestWaypoints();
+    }
+
+    if (millis() - lastGPSRequestTime > 5000)
+    {
+      requestGPSData();
+      lastGPSRequestTime = millis();
+    }
+  }
+  catch (const std::exception &e)
+  {
+    // Serial.println("Error in MAVLink loop: ");
+    // Serial.println(e.what());
   }
 }
