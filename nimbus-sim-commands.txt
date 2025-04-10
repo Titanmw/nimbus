@@ -1,0 +1,126 @@
+sudo apt update && sudo apt upgrade -y
+
+sudo apt install -y curl git build-essential lsb-release
+
+sudo apt install tree
+
+sudo curl https://packages.osrfoundation.org/gazebo.gpg --output /usr/share/keyrings/pkgs-osrf-archive-keyring.gpg
+
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/pkgs-osrf-archive-keyring.gpg] http://packages.osrfoundation.org/gazebo/ubuntu-stable $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/gazebo-stable.list > /dev/null
+
+sudo apt-get update
+
+sudo apt-get install gz-harmonic -y
+
+sudo chmod 0700 /run/user/1000
+
+mkdir -p ~/gz_ws/src
+
+cd ~/gz_ws/src
+
+git clone https://github.com/ArduPilot/ardupilot_gz.git
+
+sudo apt install -y cmake pkg-config protobuf-compiler \
+  libgz-sim8-dev libgz-math8-dev libgz-msgs8-dev libgz-transport12-dev
+
+curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.asc | \
+  sudo gpg --dearmor -o /usr/share/keyrings/ros-archive-keyring.gpg
+
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] \
+  http://packages.ros.org/ros2/ubuntu $(lsb_release -cs) main" | \
+  sudo tee /etc/apt/sources.list.d/ros2.list > /dev/null
+
+sudo apt update
+
+sudo apt install python3-colcon-common-extensions -y
+
+sudo apt update
+
+sudo apt install ros-humble-desktop -y
+
+echo "source /opt/ros/humble/setup.bash" >> ~/.bashrc
+
+source ~/.bashrc
+
+cd ~/gz_ws
+
+colcon build
+
+source install/setup.bash
+
+cd ~
+
+git clone https://github.com/ArduPilot/ardupilot.git --recursive
+
+cd ardupilot
+
+Tools/environment_install/install-prereqs-ubuntu.sh -y
+
+. ~/.profile
+
+cd ~/ardupilot
+
+./waf distclean
+
+./waf configure --board sitl
+
+./waf copter
+
+cd ~
+
+git clone https://github.com/ArduPilot/ardupilot_gazebo
+
+export GAZEBO_MODEL_PATH=$HOME/ardupilot_gazebo/models:$GAZEBO_MODEL_PATH
+export GAZEBO_RESOURCE_PATH=$HOME/ardupilot_gazebo/worlds:$GAZEBO_RESOURCE_PATH
+export GAZEBO_PLUGIN_PATH=$HOME/ardupilot_gazebo/build:$GAZEBO_PLUGIN_PATH
+
+source ~/.bashrc
+
+cd ~/ardupilot_gazebo
+
+sudo apt install rapidjson-dev
+
+sudo apt install libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
+
+mkdir -p build
+
+cd build
+
+Bei fehlern
+source /opt/ros/humble/setup.bash
+
+
+cmake ..
+
+make -j$(nproc)
+
+echo 'export GZ_SIM_SYSTEM_PLUGIN_PATH=$HOME/ardupilot_gazebo/build' >> ~/.bashrc
+source ~/.bashrc
+
+
+
+STARTEN:
+1. gazebo
+
+
+cd ~/ardupilot_gazebo/models/
+
+export GZ_SIM_SYSTEM_PLUGIN_PATH=$HOME/ardupilot_gazebo/build
+export GZ_SIM_RESOURCE_PATH=$GZ_SIM_RESOURCE_PATH:~/ardupilot_gazebo/models
+gz sim -v 4 -r ~/ardupilot_gazebo/worlds/iris_runway.sdf
+
+2. sitl
+
+sim_vehicle.py -v ArduCopter -f gazebo-iris --model JSON --mavproxy-args "--out=udp:127.0.0.1:14551 --out=udp:127.0.0.1:14552"
+
+
+MAV Commands:
+
+mode GUIDED
+
+param set ARMING_CHECK 0
+
+arm throttle
+
+takeoff 10
+
