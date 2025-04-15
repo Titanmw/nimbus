@@ -97,6 +97,48 @@ make -j$(nproc)
 echo 'export GZ_SIM_SYSTEM_PLUGIN_PATH=$HOME/ardupilot_gazebo/build' >> ~/.bashrc
 source ~/.bashrc
 
+sudo apt update
+
+sudo apt install mesa-utils
+
+
+DAS INS ~/.profile schreiben (code ~/.profile)
+
+export PATH=/opt/gcc-arm-none-eabi-10-2020-q4-major/bin:$PATH
+export PATH=/home/markus/ardupilot/Tools/autotest:$PATH
+export PATH=/usr/lib/ccache:$PATH
+
+# ArduPilot Autocompletion
+source /home/markus/ardupilot/Tools/completion/completion.bash
+
+# Gazebo plugin and model paths
+export GZ_SIM_SYSTEM_PLUGIN_PATH=$HOME/ardupilot_gazebo/build
+export GZ_SIM_RESOURCE_PATH=${GZ_SIM_RESOURCE_PATH:+$GZ_SIM_RESOURCE_PATH:}$HOME/ardupilot_gazebo/models
+export PYTHONPATH="/usr/local/lib/python:$PYTHONPATH"
+
+
+
+sudo apt install git cmake build-essential python3-pybind11 libgz-msgs8-dev libgz-transport12-dev
+
+sudo apt-get install libprotobuf-dev protobuf-compiler libprotoc-dev libgz-math8-dev
+
+sudo apt install build-essential cmake git python3 python3-pybind11 libgz-msgs8-dev libgz-transport12-dev libgz-utils2-dev
+
+sudo apt install libgz-utils3-cli-dev
+
+git clone --branch gz-msgs11 https://github.com/gazebosim/gz-msgs
+
+cd gz-msgs
+
+mkdir build && cd build
+
+cmake .. -DBUILD_TESTING=OFF -DBUILD_PYTHON_INTERFACE=ON
+
+make -j$(nproc)
+
+sudo make install
+
+pip install opencv-python
 
 
 STARTEN:
@@ -107,6 +149,7 @@ cd ~/ardupilot_gazebo/models/
 
 export GZ_SIM_SYSTEM_PLUGIN_PATH=$HOME/ardupilot_gazebo/build
 export GZ_SIM_RESOURCE_PATH=$GZ_SIM_RESOURCE_PATH:~/ardupilot_gazebo/models
+
 gz sim -v 4 -r ~/ardupilot_gazebo/worlds/iris_runway.sdf
 
 2. sitl

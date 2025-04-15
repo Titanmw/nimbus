@@ -1,11 +1,17 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, Response
 from pymavlink import mavutil
 import threading
 import queue
 import time
 import uuid
+import cv2
+import requests
+import numpy as np
+
+windows_ip = "172.22.32.1"
 
 app = Flask(__name__)
+cap = cv2.VideoCapture(0)
 
 # Globale Variablen für Status & Missionen
 status = {
@@ -126,7 +132,7 @@ def mavlink_worker():
                 if msg.current_battery != -1:
                     status["current"] = msg.current_battery / 100.0
             elif msg_type == "COMMAND_ACK":
-                print(f"📩 COMMAND_ACK empfangen für Command {msg.command} mit Ergebnis {msg.result}")
+                print(f"COMMAND_ACK empfangen für Command {msg.command} mit Ergebnis {msg.result}")
 
                 # Optionale Antwort in die response_queue legen
                 response_queue.put({
@@ -162,7 +168,6 @@ def mavlink_worker():
 
                 missions[:] = new_missions
 
-                # ✅ Jetzt sauber in die Queue mit request_id
                 response_queue.put({
                     "request_id": req_id,
                     "missions": new_missions
@@ -361,6 +366,39 @@ def start_mission():
         "action": "start_mission"
     })
     return jsonify({"status": "Mission start command sent"})
+
+@app.route("/camera", methods=["GET"])
+def get_camera_image():
+    try:
+        stream_url = f"http://{windows_ip}:8080/camera"  # Windows-Stream
+        response = requests.get(stream_url, stream=True, timeout=5)
+
+        # Suche nach einem vollständigen JPEG-Bild im Stream
+        buffer = b""
+        for chunk in response.iter_content(chunk_size=1024):
+            buffer += chunk
+            start = buffer.find(b'\xff\xd8')  # JPEG Start
+            end = buffer.find(b'\xff\xd9')    # JPEG Ende
+
+            if start != -1 and end != -1 and end > start:
+                jpg = buffer[start:end+2]
+                img_array = np.frombuffer(jpg, dtype=np.uint8)
+                frame = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
+
+                if frame is None:
+                    return jsonify({"error": "Fehler beim Decodieren des Bildes"}), 500
+
+                ret, jpeg = cv2.imencode(".jpg", frame)
+                if not ret:
+                    return jsonify({"error": "Fehler beim JPEG-Encoding"}), 500
+
+                return Response(jpeg.tobytes(), mimetype='image/jpeg')
+
+        return jsonify({"error": "Kein vollständiges JPEG im Stream gefunden"}), 500
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 
 # --- Start Threads ---
 threading.Thread(target=mavlink_worker, daemon=True).start()
