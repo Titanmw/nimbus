@@ -3,7 +3,7 @@ import cv2
 from flask import Flask, Response
 
 app = Flask(__name__)
-cap = cv2.VideoCapture(1)
+cap = cv2.VideoCapture(0)
 
 def generate():
     while True:
