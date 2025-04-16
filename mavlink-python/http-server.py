@@ -193,6 +193,13 @@ def mavlink_worker():
 
             elif cmd["action"] == "clear_missions":
                 master.mav.mission_clear_all_send(master.target_system, master.target_component)
+
+            elif cmd["action"] == "add_waypoints_bulk":
+                missions[:] = cmd["waypoints"]
+                # Neu nummerieren
+                for i, wp in enumerate(missions):
+                    wp["seq"] = i
+                update_missions(master)
                 
             elif cmd["action"] == "set_mode":
                 mode_string = cmd["mode"]
@@ -296,6 +303,26 @@ def add_waypoint():
     })
     return jsonify({"status": "Waypoint added to mission queue"})
 
+@app.route("/addWayPoints", methods=["POST"])
+def add_waypoints():
+    data = request.get_json()
+
+    if not isinstance(data, list):
+        return jsonify({"error": "Input must be a list of waypoint objects"}), 400
+
+    for wp in data:
+        if not all(k in wp for k in ("latitude", "longitude", "altitude", "command", "params")):
+            return jsonify({"error": "Each waypoint must contain latitude, longitude, altitude, command, params"}), 400
+        if not isinstance(wp["params"], list) or len(wp["params"]) != 4:
+            return jsonify({"error": "params must be a list of 4 values"}), 400
+
+    command_queue.put({
+        "action": "add_waypoints_bulk",
+        "waypoints": data
+    })
+    return jsonify({"status": f"{len(data)} waypoints added to mission queue"})
+
+
 @app.route("/deleteWayPoint", methods=["POST", "DELETE"])
 def delete_waypoint():
     data = request.get_json()
@@ -332,12 +359,20 @@ def set_mode():
         while True:
             response = response_queue.get(timeout=5)
             if response.get("request_id") == request_id:
-                return jsonify({
-                    "status": "ack",
-                    "mode": mode,
-                    "result": response["result"],
-                    "result_text": response["result_text"]
-                })
+                if "result" in response:
+                    return jsonify({
+                        "status": "ack",
+                        "mode": mode,
+                        "result": response["result"],
+                        "result_text": response["result_text"]
+                    })
+                else:
+                    return jsonify({
+                        "status": "nack",
+                        "mode": mode,
+                        "error": response.get("error", "Unbekannter Fehler")
+                    }), 500
+
     except queue.Empty:
         return jsonify({"error": "No ACK received"}), 504
 
