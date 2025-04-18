@@ -29,6 +29,8 @@ status = {
 }
 missions = []
 
+active_command = {}
+
 # Kommando-Queue vom Webserver an den MAVLink-Thread
 command_queue = queue.Queue()
 
@@ -47,7 +49,7 @@ def wait_for_ack(request_id, timeout=5):
     return None
 
 def update_missions(master: mavutil.mavlink_connection):
-    global missions
+    global status, missions, active_command
 
     master.mav.mission_clear_all_send(master.target_system, master.target_component)
     time.sleep(0.2)  # kleine Pause zur Sicherheit
@@ -83,7 +85,7 @@ def update_missions(master: mavutil.mavlink_connection):
         print("⚠️ Keine Bestätigung vom Fahrzeug erhalten")
 
 def mavlink_worker():
-    global status, missions
+    global status, missions, active_command
 
     print("🔌 Starte MAVLink-Verbindung...")
     master = mavutil.mavlink_connection('udp:127.0.0.1:14551')
@@ -101,6 +103,7 @@ def mavlink_worker():
         )
 
     last_heartbeat = 0
+    last_receive = time.time()
 
     while True:
         now = time.time()
@@ -113,6 +116,8 @@ def mavlink_worker():
         # Nachrichten empfangen
         msg = master.recv_match(blocking=False)
         if msg:
+            last_receive = now  # Empfangszeit aktualisieren
+            
             msg_type = msg.get_type()
             if msg_type == "HEARTBEAT":
                 status["base_mode"] = msg.base_mode
@@ -133,13 +138,26 @@ def mavlink_worker():
                     status["current"] = msg.current_battery / 100.0
             elif msg_type == "COMMAND_ACK":
                 print(f"COMMAND_ACK empfangen für Command {msg.command} mit Ergebnis {msg.result}")
+                
+                if active_command and msg.command == active_command.get("command"):
+                    response_queue.put({
+                        "request_id": active_command["request_id"],
+                        "command": msg.command,
+                        "result": msg.result,
+                        "result_text": mavutil.mavlink.enums['MAV_RESULT'][msg.result].name
+                    })
+                    active_command = {}  # Reset nach ACK
 
-                # Optionale Antwort in die response_queue legen
-                response_queue.put({
-                    "command": msg.command,
-                    "result": msg.result,
-                    "result_text": mavutil.mavlink.enums['MAV_RESULT'][msg.result].name
-                })
+        # ⏰ Reconnect nach 10 Sekunden ohne Empfang
+        if now - last_receive > 10:
+            print("⚠️ Keine MAVLink-Nachrichten seit 10s – reconnect...")
+            try:
+                master.close()
+            except Exception:
+                pass
+            time.sleep(1)
+            master = connect()
+            last_receive = time.time()
 
         # Webserver-Kommandos abarbeiten
         try:
@@ -256,6 +274,71 @@ def mavlink_worker():
                     0,
                     0, 0, 0, 0, 0, 0, 0
                 )
+
+            elif cmd["action"] == "goto_position":
+                master.mav.set_position_target_global_int_send(
+                    0,  # time_boot_ms (0 = ignorieren)
+                    master.target_system,
+                    master.target_component,
+                    mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,  # relativer Rahmen
+                    0b0000111111111000,  # type_mask: ignoriert vx, vy, vz, yaw_rate, accel
+                    int(cmd["lat"] * 1e7),
+                    int(cmd["lon"] * 1e7),
+                    float(cmd["alt"]),
+                    0, 0, 0,  # vx, vy, vz
+                    0, 0, 0,  # afx, afy, afz
+                    0, 0      # yaw, yaw_rate
+                )
+
+
+            elif cmd["action"] == "rotate":
+                active_command = {
+                    "request_id": cmd["request_id"],
+                    "command": mavutil.mavlink.MAV_CMD_CONDITION_YAW
+                }
+
+
+                master.mav.command_long_send(
+                    master.target_system,
+                    master.target_component,
+                    mavutil.mavlink.MAV_CMD_CONDITION_YAW,
+                    0,
+                    float(cmd["yaw"]),
+                    float(cmd["speed"]),
+                    int(cmd["direction"]),
+                    1 if cmd.get("relative", True) else 0,  # relativ oder absolut
+                    0, 0, 0
+                )
+
+            elif cmd["action"] == "guided_takeoff":
+                active_command = {
+                    "request_id": cmd.get("request_id"),
+                    "command": mavutil.mavlink.MAV_CMD_NAV_TAKEOFF
+                }
+
+                master.mav.command_long_send(
+                    master.target_system,
+                    master.target_component,
+                    mavutil.mavlink.MAV_CMD_NAV_TAKEOFF,
+                    0,
+                    0, 0, 0, 0, 0, 0,
+                    float(cmd["altitude"])
+                )
+
+            elif cmd["action"] == "guided_land":
+                active_command = {
+                    "request_id": cmd.get("request_id"),
+                    "command": mavutil.mavlink.MAV_CMD_NAV_LAND
+                }
+
+                master.mav.command_long_send(
+                    master.target_system,
+                    master.target_component,
+                    mavutil.mavlink.MAV_CMD_NAV_LAND,
+                    0,
+                    0, 0, 0, 0, 0, 0, 0
+                )
+
 
 
         except queue.Empty:
@@ -433,6 +516,99 @@ def get_camera_image():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@app.route("/goto", methods=["POST"])
+def goto():
+    data = request.get_json()
+
+    lat = data.get("latitude")
+    lon = data.get("longitude")
+    alt = data.get("altitude")
+
+    if None in [lat, lon, alt]:
+        return jsonify({"error": "Missing latitude, longitude or altitude"}), 400
+
+    command_queue.put({
+        "action": "goto_position",
+        "lat": lat,
+        "lon": lon,
+        "alt": alt
+    })
+
+    return jsonify({"status": "goto_position enqueued"})
+
+@app.route("/rotate", methods=["POST"])
+def rotate():
+    data = request.get_json()
+    yaw = data.get("yaw")  # in Grad
+    speed = data.get("speed", 10)
+    direction = data.get("direction", 1)
+    relative = data.get("relative", True)  # 🆕 Standardmäßig relativ
+
+    if yaw is None:
+        return jsonify({"error": "Missing yaw angle"}), 400
+
+    request_id = str(uuid.uuid4())
+    command_queue.put({
+        "action": "rotate",
+        "yaw": yaw,
+        "speed": speed,
+        "direction": direction,
+        "relative": relative,
+        "request_id": request_id
+    })
+
+    ack = wait_for_ack(request_id, timeout=5)
+    if ack:
+        return jsonify({
+            "ack": True,
+            "result": ack["result"],
+            "result_text": ack["result_text"]
+        })
+    else:
+        return jsonify({"error": "No ACK received"}), 504
+
+@app.route("/takeoff", methods=["POST"])
+def takeoff():
+    data = request.get_json()
+    altitude = data.get("altitude", 10.0)
+    request_id = str(uuid.uuid4())
+
+    command_queue.put({
+        "action": "guided_takeoff",
+        "altitude": altitude,
+        "request_id": request_id
+    })
+
+    ack = wait_for_ack(request_id, timeout=5)
+    if ack:
+        return jsonify({
+            "ack": True,
+            "result": ack["result"],
+            "result_text": ack["result_text"]
+        })
+    else:
+        return jsonify({"error": "No ACK received"}), 504
+
+@app.route("/land", methods=["POST"])
+def land():
+    request_id = str(uuid.uuid4())
+
+    command_queue.put({
+        "action": "guided_land",
+        "request_id": request_id
+    })
+
+    ack = wait_for_ack(request_id, timeout=5)
+    if ack:
+        return jsonify({
+            "ack": True,
+            "result": ack["result"],
+            "result_text": ack["result_text"]
+        })
+    else:
+        return jsonify({"error": "No ACK received"}), 504
+
 
 
 # --- Start Threads ---
