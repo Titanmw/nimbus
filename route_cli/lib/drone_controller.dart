@@ -16,10 +16,28 @@ class DroneController {
         body: jsonEncode(waypoints));
 
     if (response.statusCode == 200) {
-      print("✅ Waypoints gesetzt.");
+      print("Waypoints gesetzt.");
     } else {
-      print("❌ Fehler beim Setzen der Waypoints: ${response.body}");
+      print("Fehler beim Setzen der Waypoints: ${response.body}");
     }
+  }
+
+  Future<List<Waypoint>> getWaypoints() async {
+    final url = Uri.parse('$baseUrl/getWayPoints');
+    final response = await http.get(url);
+
+    if (response.statusCode == 200) {
+      final json = jsonDecode(response.body);
+      if (json is List) {
+        return json.map((wp) => Waypoint.fromJson(wp)).toList();
+      } else {
+        print("Unerwartetes Format bei Waypoints: $json");
+      }
+    } else {
+      print("Fehler beim Abrufen der Waypoints: ${response.statusCode}");
+    }
+
+    return [];
   }
 
   Future<bool> setMode(String mode) async {
@@ -38,15 +56,15 @@ class DroneController {
           json['result_text'] == 'MAV_RESULT_ACCEPTED';
 
       if (isAccepted) {
-        print("✅ Modus erfolgreich gesetzt: $mode");
+        print("Modus erfolgreich gesetzt: $mode");
         return true;
       } else {
         print(
-            "⚠️ Modusantwort erhalten, aber nicht akzeptiert: ${json['result_text']}");
+            "Modusantwort erhalten, aber nicht akzeptiert: ${json['result_text']}");
         return false;
       }
     } else {
-      print("❌ Fehler beim Setzen des Modus: ${response.body}");
+      print("Fehler beim Setzen des Modus: ${response.body}");
       return false;
     }
   }
@@ -56,10 +74,10 @@ class DroneController {
     final response = await http.post(url);
 
     if (response.statusCode == 200) {
-      print("✅ Drohne ist bewaffnet.");
+      print("Drohne ist scharf.");
       return true;
     } else {
-      print("❌ Fehler beim Armen: ${response.body}");
+      print("Fehler beim Armen: ${response.body}");
       return false;
     }
   }
@@ -69,10 +87,10 @@ class DroneController {
     final response = await http.post(url);
 
     if (response.statusCode == 200) {
-      print("✅ Mission gestartet.");
+      print("Mission gestartet.");
       return true;
     } else {
-      print("❌ Fehler beim Starten der Mission: ${response.body}");
+      print("Fehler beim Starten der Mission: ${response.body}");
       return false;
     }
   }
@@ -85,7 +103,7 @@ class DroneController {
       final json = jsonDecode(response.body);
       return DroneStatus.fromJson(json);
     } else {
-      print("❌ Fehler beim Abrufen des Status: ${response.body}");
+      print("Fehler beim Abrufen des Status: ${response.body}");
       return null;
     }
   }
@@ -98,17 +116,20 @@ class DroneController {
         response.headers['content-type'] == 'image/jpeg') {
       return response.bodyBytes;
     } else {
-      print('❌ Fehler beim Abrufen des Kamerabilds: ${response.statusCode}');
+      print('Fehler beim Abrufen des Kamerabilds: ${response.statusCode}');
       return null;
     }
   }
 
   Future<void> takeoffAndFly(List<Waypoint> waypoints,
       {double takeoffAltitude = 10.0}) async {
-    final fullMission = [
-      Waypoint.takeoff(altitude: takeoffAltitude),
-      ...waypoints
-    ];
+    // Prüfe, ob bereits ein Takeoff-Waypoint enthalten ist
+    final hasTakeoff = waypoints.any((wp) => wp.command == 22);
+
+    final fullMission = hasTakeoff
+        ? waypoints
+        : [Waypoint.takeoff(altitude: takeoffAltitude), ...waypoints];
+
     await setWaypoints(fullMission);
     await setMode("AUTO");
     await arm();

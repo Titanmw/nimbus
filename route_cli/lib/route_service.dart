@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:polyline_codec/polyline_codec.dart';
 import 'package:route_cli/place.dart';
+import 'package:route_cli/waypoint.dart';
 
 class RouteService {
   RouteService(this.apiKey);
@@ -35,6 +36,36 @@ class RouteService {
     } else {
       throw Exception('Fehler bei der Anfrage: ${response.statusCode}');
     }
+  }
+
+  Future<List<Place>> getWalkingRouteAsPlaces(Place a, Place b) async {
+    final list = await getWalkingRoute(a, b);
+    if (list == null) return [];
+
+    return List.generate(list.length, (index) {
+      final e = list[index];
+      return Place(
+        lat: e[0],
+        lon: e[1],
+        name: 'Wegpunkt ${index + 1}',
+        label: 'Wegpunkt ${index + 1} → Lat: ${e[1]}, Lon: ${e[0]}',
+      );
+    });
+  }
+
+  Future<List<Waypoint>> getWalkingRouteAsWaypoints(Place a, Place b,
+      {double altitude = 10.0}) async {
+    final list = await getWalkingRoute(a, b);
+    if (list == null) return [];
+
+    return list
+        .map((e) => Waypoint(
+              latitude: e[0],
+              longitude: e[1],
+              altitude: altitude,
+              command: 16, // MAV_CMD_NAV_WAYPOINT
+            ))
+        .toList();
   }
 
   Future<List<Place>> searchPlaces(String text) async {

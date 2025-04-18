@@ -3,20 +3,22 @@ import 'dart:io';
 import 'package:route_cli/drone_controller.dart';
 import 'package:route_cli/place.dart';
 import 'package:route_cli/route_service.dart';
+import 'package:route_cli/waypoint.dart';
 
 Future<void> main(List<String> arguments) async {
   final routeService =
       RouteService('5b3ce3597851110001cf6248cb75cce6ad4c4a44a5c409c3faaecffe');
+
   final drone = DroneController('http://127.0.0.1:5000');
 
   final places = await routeService.searchPlaces("HTL-Donaustadt");
 
-  final myPlace = Place(
-    name: "Me",
-    label: "Me",
-    lat: 48.21919,
-    lon: 16.4484621,
-  );
+  var status = await drone.getStatus();
+  if (status != null) {
+    print("Drohnenstatus:\n$status");
+  }
+
+  final myPlace = Place.fromWaypoint(status!.currentPosition);
 
   if (places.isEmpty) {
     print("Kein Treffer");
@@ -43,22 +45,40 @@ Future<void> main(List<String> arguments) async {
     print("Entfernung: $distKm km\n");
   }
 
-  final waypoints = await routeService.getWalkingRoute(myPlace, places[1]);
-  print(waypoints);
+  Place goal = places[1];
+  double flightAltitude = 10.0;
 
-  final status = await drone.getStatus();
+  final fullMission = [
+    status.currentPosition, // Startposition als Home
+    Waypoint.takeoff(altitude: flightAltitude), // Takeoff
+    ...await routeService.getWalkingRouteAsWaypoints(
+      myPlace,
+      goal,
+      altitude: flightAltitude,
+    ), // Die Route
+    Waypoint.landHere(), // Landung
+  ];
+
+  print("Waypoints:");
+  for (final waypoint in fullMission) {
+    print(waypoint);
+  }
+
+  await drone.setWaypoints(fullMission);
+
+  await drone.setMode("GUIDED");
+  await drone.arm();
+  await drone.startMission();
+
+  status = await drone.getStatus();
   if (status != null) {
-    print("✅ Drohnenstatus:\n$status");
+    print("Drohnenstatus:\n$status");
   }
 
-  // await drone.setMode("GUIDED");
-  // await drone.arm();
-  // await drone.startMission();
-
-  final imageBytes = await drone.getCameraImage();
-  if (imageBytes != null) {
-    final file = File('snapshot.jpg');
-    await file.writeAsBytes(imageBytes);
-    print('📸 Bild gespeichert als snapshot.jpg');
-  }
+  // final imageBytes = await drone.getCameraImage();
+  // if (imageBytes != null) {
+  //   final file = File('snapshot.jpg');
+  //   await file.writeAsBytes(imageBytes);
+  //   print('📸 Bild gespeichert als snapshot.jpg');
+  // }
 }

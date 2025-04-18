@@ -1,5 +1,7 @@
 import 'dart:math';
 
+import 'package:route_cli/waypoint.dart';
+
 class Place {
   static double haversine(double lat1, double lon1, double lat2, double lon2) {
     const R = 6371000; // Erdradius in Meter
@@ -22,12 +24,11 @@ class Place {
   final double lat;
   final double lon;
 
-  Place({
-    required this.name,
-    required this.label,
-    required this.lat,
-    required this.lon,
-  });
+  Place(
+      {required this.name,
+      required this.label,
+      required this.lat,
+      required this.lon});
 
   factory Place.fromJson(Map<String, dynamic> json) {
     final coords = json['geometry']['coordinates'];
@@ -38,6 +39,16 @@ class Place {
       label: props['label'] ?? '',
       lat: coords[1],
       lon: coords[0],
+    );
+  }
+
+  factory Place.fromWaypoint(Waypoint wp,
+      {String name = "Waypoint", String label = "Generated Waypoint"}) {
+    return Place(
+      name: name,
+      label: label,
+      lat: wp.latitude,
+      lon: wp.longitude,
     );
   }
 

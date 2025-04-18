@@ -1,29 +1,35 @@
+import 'package:route_cli/waypoint.dart';
+
 class DroneStatus {
   final double voltage;
   final double current;
-  final double latitude;
-  final double longitude;
-  final double altitude;
   final int gpsFix;
   final int satellites;
   final String mode;
   final int baseMode;
   final int customMode;
   final int? systemStatus;
+  late Waypoint currentPosition;
 
-  DroneStatus({
-    required this.voltage,
-    required this.current,
-    required this.latitude,
-    required this.longitude,
-    required this.altitude,
-    required this.gpsFix,
-    required this.satellites,
-    required this.mode,
-    required this.baseMode,
-    required this.customMode,
-    required this.systemStatus,
-  });
+  DroneStatus(
+      {required this.voltage,
+      required this.current,
+      required latitude,
+      required longitude,
+      required altitude,
+      required this.gpsFix,
+      required this.satellites,
+      required this.mode,
+      required this.baseMode,
+      required this.customMode,
+      required this.systemStatus}) {
+    currentPosition = Waypoint(
+      latitude: latitude,
+      longitude: longitude,
+      altitude: altitude,
+      command: 179,
+    );
+  }
 
   factory DroneStatus.fromJson(Map<String, dynamic> json) {
     int? parseOptionalInt(dynamic value) {
@@ -52,7 +58,7 @@ class DroneStatus {
     final systemStatusStr =
         systemStatus != null ? systemStatus.toString() : "UNKNOWN";
     return '''
-      Mode: $mode | Lat: $latitude, Lon: $longitude, Alt: ${altitude.toStringAsFixed(1)} m
+      Mode: $mode | Lat: ${currentPosition.latitude}, Lon: ${currentPosition.longitude}, Alt: ${currentPosition.altitude.toStringAsFixed(1)} m
       GPS Fix: $gpsFix (Satellites: $satellites)
       Voltage: ${voltage.toStringAsFixed(1)} V, Current: ${current.toStringAsFixed(1)} A
       System Status: $systemStatusStr, BaseMode: $baseMode

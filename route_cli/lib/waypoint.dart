@@ -27,6 +27,17 @@ class Waypoint {
     );
   }
 
+  /// Factory für NAV_LAND (MAV_CMD_NAV_LAND = 21)
+  factory Waypoint.landHere() {
+    return Waypoint(
+      latitude: 0.0,
+      longitude: 0.0,
+      altitude: 0.0,
+      command: 21,
+      frame: 3,
+    );
+  }
+
   /// Factory für NAV_WAYPOINT (MAV_CMD_NAV_WAYPOINT = 16)
   factory Waypoint.fromPlace({required Place place, required double altitude}) {
     return Waypoint(
