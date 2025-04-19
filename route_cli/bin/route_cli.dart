@@ -64,11 +64,11 @@ Future<void> main(List<String> arguments) async {
     print(waypoint);
   }
 
-  await drone.setWaypoints(fullMission);
+  await drone.setMissions(fullMission);
 
-  await drone.setMode("GUIDED");
-  await drone.arm();
-  await drone.startMission();
+  // await drone.setMode("GUIDED");
+  // await drone.arm();
+  // await drone.startMission();
 
   status = await drone.getStatus();
   if (status != null) {

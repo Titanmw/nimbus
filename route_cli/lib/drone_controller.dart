@@ -9,8 +9,8 @@ class DroneController {
 
   DroneController(this.baseUrl);
 
-  Future<void> setWaypoints(List<Waypoint> waypoints) async {
-    final url = Uri.parse('$baseUrl/addWayPoints');
+  Future<void> setMissions(List<Waypoint> waypoints) async {
+    final url = Uri.parse('$baseUrl/set_missions');
     final response = await http.post(url,
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode(waypoints));
@@ -22,8 +22,8 @@ class DroneController {
     }
   }
 
-  Future<List<Waypoint>> getWaypoints() async {
-    final url = Uri.parse('$baseUrl/getWayPoints');
+  Future<List<Waypoint>> getMissions() async {
+    final url = Uri.parse('$baseUrl/get_missions');
     final response = await http.get(url);
 
     if (response.statusCode == 200) {
@@ -41,7 +41,7 @@ class DroneController {
   }
 
   Future<bool> setMode(String mode) async {
-    final url = Uri.parse('$baseUrl/setMode');
+    final url = Uri.parse('$baseUrl/set_mode');
     final response = await http.post(
       url,
       headers: {'Content-Type': 'application/json'},
@@ -83,7 +83,7 @@ class DroneController {
   }
 
   Future<bool> startMission() async {
-    final url = Uri.parse('$baseUrl/startMission');
+    final url = Uri.parse('$baseUrl/start_mission');
     final response = await http.post(url);
 
     if (response.statusCode == 200) {
@@ -96,7 +96,7 @@ class DroneController {
   }
 
   Future<DroneStatus?> getStatus() async {
-    final url = Uri.parse('$baseUrl/getStatus');
+    final url = Uri.parse('$baseUrl/get_status');
     final response = await http.get(url);
 
     if (response.statusCode == 200) {
@@ -130,7 +130,7 @@ class DroneController {
         ? waypoints
         : [Waypoint.takeoff(altitude: takeoffAltitude), ...waypoints];
 
-    await setWaypoints(fullMission);
+    await setMissions(fullMission);
     await setMode("AUTO");
     await arm();
     await startMission();

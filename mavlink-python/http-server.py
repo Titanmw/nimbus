@@ -147,6 +147,17 @@ def mavlink_worker():
                         "result_text": mavutil.mavlink.enums['MAV_RESULT'][msg.result].name
                     })
                     active_command = {}  # Reset nach ACK
+            elif msg_type == "MISSION_ACK":
+                print(f"MISSION_ACK empfangen mit Ergebnis {msg.type}")
+
+                if active_command and active_command.get("command") == "CLEAR_MISSIONS":
+                    response_queue.put({
+                        "request_id": active_command["request_id"],
+                        "result": msg.type,
+                        "result_text": mavutil.mavlink.enums['MAV_MISSION_RESULT'][msg.type].name
+                    })
+                    active_command = {}
+
 
         # ⏰ Reconnect nach 10 Sekunden ohne Empfang
         if now - last_receive > 10:
@@ -191,28 +202,16 @@ def mavlink_worker():
                     "missions": new_missions
                 })
 
-            elif cmd["action"] == "add_waypoint":
-                missions.append(cmd["waypoint"])
-
-                update_missions(master)
-
-            elif cmd["action"] == "delete_waypoint":
-                seq = cmd["seq"]
-
-                # Suche und lösche Waypoint
-                updated = [wp for wp in missions if wp["seq"] != seq]
-
-                # Neu nummerieren
-                for i, wp in enumerate(updated):
-                    wp["seq"] = i
-
-                missions[:] = updated
-                update_missions(master)
-
             elif cmd["action"] == "clear_missions":
+                missions.clear()
+                active_command = {
+                    "request_id": cmd.get("request_id"),
+                    "command": "CLEAR_MISSIONS"
+                }
+
                 master.mav.mission_clear_all_send(master.target_system, master.target_component)
 
-            elif cmd["action"] == "add_waypoints_bulk":
+            elif cmd["action"] == "set_missions":
                 missions[:] = cmd["waypoints"]
                 # Neu nummerieren
                 for i, wp in enumerate(missions):
@@ -267,6 +266,11 @@ def mavlink_worker():
                     })
 
             elif cmd["action"] == "start_mission":
+                active_command = {
+                    "request_id": cmd.get("request_id"),
+                    "command": mavutil.mavlink.MAV_CMD_MISSION_START
+                }
+
                 master.mav.command_long_send(
                     master.target_system,
                     master.target_component,
@@ -290,13 +294,11 @@ def mavlink_worker():
                     0, 0      # yaw, yaw_rate
                 )
 
-
             elif cmd["action"] == "rotate":
                 active_command = {
                     "request_id": cmd["request_id"],
                     "command": mavutil.mavlink.MAV_CMD_CONDITION_YAW
                 }
-
 
                 master.mav.command_long_send(
                     master.target_system,
@@ -348,7 +350,7 @@ def mavlink_worker():
 
 # --- Flask API-Endpunkte ---
 
-@app.route("/getWayPoints", methods=["GET"])
+@app.route("/get_missions", methods=["GET"])
 def get_waypoints():
     req_id = str(uuid.uuid4())
     command_queue.put({"action": "get_missions", "request_id": req_id})
@@ -360,33 +362,11 @@ def get_waypoints():
     except queue.Empty:
         return jsonify({"error": "Timeout bei Missionsabfrage"}), 504
 
-@app.route("/getStatus", methods=["GET"])
+@app.route("/get_status", methods=["GET"])
 def get_status():
     return jsonify(status)
 
-@app.route("/addWayPoint", methods=["POST"])
-def add_waypoint():
-    data = request.get_json()
-
-    # Validierung
-    if not all(k in data for k in ("latitude", "longitude", "altitude", "command", "params")):
-        return jsonify({"error": "Missing parameters"}), 400
-    if not isinstance(data["params"], list) or len(data["params"]) != 4:
-        return jsonify({"error": "params must be a list of 4 values"}), 400
-
-    command_queue.put({
-        "action": "add_waypoint",
-        "waypoint": {
-            "latitude": data["latitude"],
-            "longitude": data["longitude"],
-            "altitude": data["altitude"],
-            "command": data["command"],
-            "params": data["params"]
-        }
-    })
-    return jsonify({"status": "Waypoint added to mission queue"})
-
-@app.route("/addWayPoints", methods=["POST"])
+@app.route("/set_missions", methods=["POST"])
 def add_waypoints():
     data = request.get_json()
 
@@ -400,33 +380,31 @@ def add_waypoints():
             return jsonify({"error": "params must be a list of 4 values"}), 400
 
     command_queue.put({
-        "action": "add_waypoints_bulk",
+        "action": "set_missions",
         "waypoints": data
     })
     return jsonify({"status": f"{len(data)} waypoints added to mission queue"})
 
-
-@app.route("/deleteWayPoint", methods=["POST", "DELETE"])
-def delete_waypoint():
-    data = request.get_json()
-    seq_to_delete = data.get("seq")
-
-    if seq_to_delete is None:
-        return jsonify({"error": "Missing 'seq' parameter"}), 400
+@app.route("/clear_missions", methods=["DELETE"])
+def delete_all_waypoints():
+    request_id = str(uuid.uuid4())
 
     command_queue.put({
-        "action": "delete_waypoint",
-        "seq": seq_to_delete
+        "action": "clear_missions",
+        "request_id": request_id
     })
 
-    return jsonify({"status": f"Waypoint {seq_to_delete} marked for deletion"})
+    ack = wait_for_ack(request_id, timeout=5)
+    if ack:
+        return jsonify({
+            "ack": True,
+            "result": ack["result"],
+            "result_text": ack["result_text"]
+        })
+    else:
+        return jsonify({"error": "No MISSION_ACK received"}), 504
 
-@app.route("/deleteAllWaypoints", methods=["DELETE"])
-def delete_all_waypoints():
-    command_queue.put({"action": "clear_missions"})
-    return jsonify({"status": "All waypoints deleted"})
-
-@app.route("/setMode", methods=["POST"])
+@app.route("/set_mode", methods=["POST"])
 def set_mode():
     data = request.get_json()
     mode = data.get("mode", "AUTO").upper()
@@ -478,12 +456,24 @@ def arm_vehicle():
     else:
         return jsonify({"error": "No ACK received"}), 504
 
-@app.route("/startMission", methods=["POST"])
+@app.route("/start_mission", methods=["POST"])
 def start_mission():
+    request_id = str(uuid.uuid4())
+
     command_queue.put({
-        "action": "start_mission"
+        "action": "start_mission",
+        "request_id": request_id
     })
-    return jsonify({"status": "Mission start command sent"})
+
+    ack = wait_for_ack(request_id, timeout=5)
+    if ack:
+        return jsonify({
+            "ack": True,
+            "result": ack["result"],
+            "result_text": ack["result_text"]
+        })
+    else:
+        return jsonify({"error": "No ACK received"}), 504
 
 @app.route("/camera", methods=["GET"])
 def get_camera_image():

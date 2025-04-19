@@ -7,7 +7,7 @@ import math
 # MAVLink-Verbindung aufbauen
 master = mavutil.mavlink_connection('udp:127.0.0.1:14551')
 master.wait_heartbeat()
-print("✅ MAVLink Heartbeat empfangen.")
+print("MAVLink Heartbeat empfangen.")
 
 start_time = time.time()
 
@@ -27,7 +27,7 @@ def callback(msg):
         distance_cm = int(distance_m * 100)
         print(f"\r📡 LaserScan → {distance_cm} cm @ {time_boot_ms} ms", end="", flush=True)
     else:
-        print("\r⚠️ Ungültige Messung: kein gültiger Wert", end="", flush=True)
+        print("\rUngültige Messung: kein gültiger Wert", end="", flush=True)
         distance_cm = 65535  # Ungültig / kein Echo
 
     master.mav.distance_sensor_send(
@@ -60,4 +60,4 @@ else:
         while True:
             time.sleep(0.1)
     except KeyboardInterrupt:
-        print("\n⛔️ Abbruch durch Benutzer")
+        print("\nAbbruch durch Benutzer")
