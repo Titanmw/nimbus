@@ -265,6 +265,35 @@ def mavlink_worker():
                         "result_text": mavutil.mavlink.enums['MAV_RESULT'][ack.result].name
                     })
 
+            elif cmd["action"] == "disarm":
+                req_id = cmd.get("request_id")
+                force = cmd.get("force", False)
+                force_code = 21196 if force else 0
+
+                master.mav.command_long_send(
+                    master.target_system,
+                    master.target_component,
+                    mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM,
+                    0,
+                    0,  # Disarm
+                    force_code,
+                    0, 0, 0, 0, 0
+                )
+
+                ack = master.recv_match(type='COMMAND_ACK', blocking=True, timeout=3)
+                if ack and ack.command == mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM:
+                    response_queue.put({
+                        "request_id": req_id,
+                        "result": ack.result,
+                        "result_text": mavutil.mavlink.enums['MAV_RESULT'][ack.result].name
+                    })
+                else:
+                    response_queue.put({
+                        "request_id": req_id,
+                        "error": "No ACK received"
+                    })
+
+
             elif cmd["action"] == "start_mission":
                 active_command = {
                     "request_id": cmd.get("request_id"),
@@ -443,6 +472,28 @@ def arm_vehicle():
 
     command_queue.put({
         "action": "arm",
+        "request_id": request_id
+    })
+
+    ack = wait_for_ack(request_id, timeout=5)
+    if ack:
+        return jsonify({
+            "ack": True,
+            "result": ack["result"],
+            "result_text": ack["result_text"]
+        })
+    else:
+        return jsonify({"error": "No ACK received"}), 504
+
+@app.route("/disarm", methods=["POST"])
+def disarm_vehicle():
+    data = request.get_json(silent=True) or {}
+    force = data.get("force", False)
+    request_id = str(uuid.uuid4())
+
+    command_queue.put({
+        "action": "disarm",
+        "force": force,
         "request_id": request_id
     })
 

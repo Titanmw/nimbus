@@ -40,6 +40,22 @@ class DroneController {
     return [];
   }
 
+  Future<bool> clearMissions() async {
+    final url = Uri.parse('$baseUrl/clear_missions');
+    final response = await http.delete(
+      url,
+      headers: {'Content-Type': 'application/json'},
+    );
+
+    if (response.statusCode == 200) {
+      print("Missionen erfolgreich gelöscht.");
+      return true;
+    } else {
+      print("Fehler beim Löschen der Missionen: ${response.body}");
+      return false;
+    }
+  }
+
   Future<bool> setMode(String mode) async {
     final url = Uri.parse('$baseUrl/set_mode');
     final response = await http.post(
@@ -82,6 +98,23 @@ class DroneController {
     }
   }
 
+  Future<bool> disarm(bool force) async {
+    final url = Uri.parse('$baseUrl/disarm');
+    final response = await http.post(
+      url,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'force': force}),
+    );
+
+    if (response.statusCode == 200) {
+      print("Drohne wurde entschärft.");
+      return true;
+    } else {
+      print("Fehler beim Entschärfen: ${response.body}");
+      return false;
+    }
+  }
+
   Future<bool> startMission() async {
     final url = Uri.parse('$baseUrl/start_mission');
     final response = await http.post(url);
@@ -91,6 +124,91 @@ class DroneController {
       return true;
     } else {
       print("Fehler beim Starten der Mission: ${response.body}");
+      return false;
+    }
+  }
+
+  Future<bool> goto({
+    required double latitude,
+    required double longitude,
+    required double altitude,
+  }) async {
+    final url = Uri.parse('$baseUrl/goto');
+    final response = await http.post(
+      url,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'latitude': latitude,
+        'longitude': longitude,
+        'altitude': altitude,
+      }),
+    );
+
+    if (response.statusCode == 200) {
+      print("Goto-Befehl erfolgreich gesendet.");
+      return true;
+    } else {
+      print("Fehler beim Senden des Goto-Kommandos: ${response.body}");
+      return false;
+    }
+  }
+
+  Future<bool> rotate({
+    required double yaw,
+    required double speed,
+    required int direction,
+    required bool relative,
+  }) async {
+    final url = Uri.parse('$baseUrl/rotate');
+    final response = await http.post(
+      url,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'yaw': yaw,
+        'speed': speed,
+        'direction': direction,
+        'relative': relative,
+      }),
+    );
+
+    if (response.statusCode == 200) {
+      print("Rotationsbefehl erfolgreich gesendet.");
+      return true;
+    } else {
+      print("Fehler beim Senden des Rotationsbefehls: ${response.body}");
+      return false;
+    }
+  }
+
+  Future<bool> takeoff(double altitude) async {
+    final url = Uri.parse('$baseUrl/takeoff');
+    final response = await http.post(
+      url,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'altitude': altitude}),
+    );
+
+    if (response.statusCode == 200) {
+      print("Takeoff-Befehl erfolgreich gesendet.");
+      return true;
+    } else {
+      print("Fehler beim Takeoff-Befehl: ${response.body}");
+      return false;
+    }
+  }
+
+  Future<bool> land() async {
+    final url = Uri.parse('$baseUrl/land');
+    final response = await http.post(
+      url,
+      headers: {'Content-Type': 'application/json'},
+    );
+
+    if (response.statusCode == 200) {
+      print("Landeanfrage erfolgreich gesendet.");
+      return true;
+    } else {
+      print("Fehler beim Landeanfrage: ${response.body}");
       return false;
     }
   }
