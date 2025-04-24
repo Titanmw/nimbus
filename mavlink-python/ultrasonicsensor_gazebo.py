@@ -2,23 +2,19 @@ import gz.transport13 as gz_transport
 from gz.msgs11 import laserscan_pb2
 from pymavlink import mavutil
 import time
-import math
 
-# MAVLink-Verbindung aufbauen
 master = mavutil.mavlink_connection('udp:127.0.0.1:14551')
 master.wait_heartbeat()
 print("MAVLink Heartbeat empfangen.")
 
 start_time = time.time()
 
-# LaserScan Callback
-
 def callback(msg):
     time_boot_ms = int((time.time() - start_time) * 1000)
     ranges = list(msg.ranges)
 
     if not ranges:
-        print("⚠️ Keine Range-Daten erhalten.")
+        print("Keine Range-Daten erhalten.")
         return
 
     distance_m = ranges[len(ranges)//2]
@@ -42,7 +38,6 @@ def callback(msg):
     )
 
 
-# GZ-Node einrichten
 node = gz_transport.Node()
 topic = "/world/iris_runway/model/iris_with_gimbal/link/ultrasound_front_link/sensor/ultrasound_front/scan"
 
@@ -53,9 +48,9 @@ success = node.subscribe(
 )
 
 if not success:
-    print("❌ Konnte nicht auf Topic abonnieren:", topic)
+    print("Konnte nicht auf Topic abonnieren:", topic)
 else:
-    print(f"📡 Lausche auf Topic: {topic}")
+    print(f"Lausche auf Topic: {topic}")
     try:
         while True:
             time.sleep(0.1)

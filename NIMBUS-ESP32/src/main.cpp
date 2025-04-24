@@ -600,7 +600,7 @@ void checkForIncomingMessages()
   }
 }
 
-void handleGetWayPoints()
+void handleGetMissions()
 {
   // Serial.print("Sending waypoints, count: ");
   // Serial.println(waypoints.size());
@@ -690,7 +690,7 @@ void handleAddWayPoint()
   }
 }
 
-void handleDeleteAllWaypoints()
+void handleClearMissions()
 {
   waypoints.clear();
   deleteAllWaypoints();
@@ -763,6 +763,46 @@ void handleSetMode()
   {
     server.send(400, "application/json", "{\"error\": \"Invalid request\"}");
   }
+}
+
+void handleSetMissions()
+{
+  // geplant
+}
+
+void handleStartMission()
+{
+  // geplant
+}
+
+void handleGoto()
+{
+  // geplant
+}
+
+void handleRotate()
+{
+  // geplant
+}
+
+void handleArm()
+{
+  // geplant
+}
+
+void handleDisarm()
+{
+  // geplant
+}
+
+void handleTakeoff()
+{
+  // geplant
+}
+
+void handleLand()
+{
+  // geplant
 }
 
 void handleCaptureCamera()
@@ -907,12 +947,19 @@ void setup()
     initCamera();
 
     setupWiFi();
+    server.on("/get_missions", HTTP_GET, handleGetMissions);
+    server.on("/set_missions", HTTP_POST, handleSetMissions);
+    server.on("/clear_missions", HTTP_DELETE, handleClearMissions);
+    server.on("/start_mission", HTTP_POST, handleStartMission);
+    server.on("/goto", HTTP_POST, handleGoto);
+    server.on("/rotate", HTTP_POST, handleRotate);
+    server.on("/arm", HTTP_POST, handleArm);
+    server.on("/disarm", HTTP_POST, handleDisarm);
+    server.on("/takeoff", HTTP_POST, handleTakeoff);
+    server.on("/land", HTTP_POST, handleLand);
+    server.on("/set_mode", HTTP_POST, handleSetMode);
+    server.on("/get_status", HTTP_GET, handleGetStatus);
     server.on("/camera", HTTP_GET, handleCaptureCamera);
-    server.on("/getWayPoints", HTTP_GET, handleGetWayPoints);
-    server.on("/addWayPoint", HTTP_POST, handleAddWayPoint);
-    server.on("/deleteAllWaypoints", HTTP_DELETE, handleDeleteAllWaypoints);
-    server.on("/getStatus", HTTP_GET, handleGetStatus);
-    server.on("/setMode", HTTP_POST, handleSetMode);
     server.begin();
     // Serial.println("Web server started");
 

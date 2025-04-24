@@ -379,6 +379,10 @@ def mavlink_worker():
 
 # --- Flask API-Endpunkte ---
 
+@app.route("/info", methods=["GET"])
+def info():
+    return jsonify({"type": "drohne"})
+
 @app.route("/get_missions", methods=["GET"])
 def get_waypoints():
     req_id = str(uuid.uuid4())
