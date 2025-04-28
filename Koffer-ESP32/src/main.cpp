@@ -76,7 +76,7 @@ void handleSetPosition()
   }
 
   Serial.printf("Servo: %d° -> %d°\n", currentPos, target);
-  moveServoSmooth(currentPos, target);
+  moveServoSmooth(currentPos, target, 1, 25);
 
   String response = "{\"position\":" + String(currentPos) + ", \"min\":0, \"max\":" + String(SERVO_RANGE_DEG) + "}";
   server.send(200, "application/json", response.c_str());
@@ -85,9 +85,10 @@ void handleSetPosition()
 void setup()
 {
   Serial.begin(115200);
-  delay(100);
+  delay(1000);
 
   // WLAN verbinden
+  WiFi.setAutoReconnect(true);
   WiFi.begin(ssid, password);
   Serial.printf("Verbinde mit WLAN \"%s\"...\n", ssid);
   unsigned long start = millis();
@@ -134,23 +135,4 @@ void setup()
 void loop()
 {
   server.handleClient();
-
-  // WLAN überwachen & reconnecten
-  static unsigned long lastWiFiCheck = 0;
-  if (millis() - lastWiFiCheck > 5000)
-  {
-    lastWiFiCheck = millis();
-
-    if (WiFi.status() != WL_CONNECTED)
-    {
-      Serial.println("WLAN getrennt. Versuche Reconnect...");
-      WiFi.disconnect(); // optional: vorherige Verbindung hart trennen
-      WiFi.begin(ssid, password);
-    }
-    else
-    {
-      // optional: Debug-Ausgabe
-      // Serial.println("WLAN OK");
-    }
-  }
 }
