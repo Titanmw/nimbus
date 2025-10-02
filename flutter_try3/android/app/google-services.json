@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "215752198360",
+    "project_id": "nimbus-signinup",
+    "storage_bucket": "nimbus-signinup.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:215752198360:android:6c9d4de9e71c2ab6c6efad",
+        "android_client_info": {
+          "package_name": "com.example.flutter_try3"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAr3sI0wvKI1lf8ZPvcgb2UBmgdPsT0iLw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
